@@ -120,6 +120,7 @@ export default function WorkspaceSettingsPage() {
       <div className="grid grid-cols-1 gap-8">
         
         {/* TELEPHONY (FONADA) CARD */}
+        {false && (
         <Card className="shadow-sm border-slate-200">
           <CardHeader className="border-b bg-slate-50/50 pb-4">
             <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
@@ -161,6 +162,7 @@ export default function WorkspaceSettingsPage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
         {/* UNICORN AI CARD */}
         <Card className="shadow-sm border-slate-200">
