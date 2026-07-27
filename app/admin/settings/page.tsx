@@ -119,50 +119,7 @@ export default function WorkspaceSettingsPage() {
 
       <div className="grid grid-cols-1 gap-8">
         
-        {/* TELEPHONY (FONADA) CARD */}
-        {false && (
-        <Card className="shadow-sm border-slate-200">
-          <CardHeader className="border-b bg-slate-50/50 pb-4">
-            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-              <PhoneCall className="h-5 w-5 text-blue-600" />
-              Telephony Dialer (Click-to-Call)
-            </CardTitle>
-            <CardDescription>
-              Connect your Fonada account to enable auto-dialing and call recording directly inside the CRM.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-6 space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label className="text-slate-700 font-semibold flex items-center gap-2">
-                  Client ID <KeyRound className="h-3 w-3 text-slate-400" />
-                </Label>
-                <Input 
-                  placeholder="e.g. Hanva" 
-                  value={formData.fonada_client_id}
-                  onChange={(e) => setFormData(prev => ({ ...prev, fonada_client_id: e.target.value }))}
-                  className="font-mono text-sm bg-slate-50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 font-semibold flex items-center gap-2">
-                  Secret Key <ShieldCheck className="h-3 w-3 text-green-500" />
-                </Label>
-                <Input 
-                  type="password"
-                  placeholder="Paste your Fonada secret key..." 
-                  value={formData.fonada_secret}
-                  onChange={(e) => setFormData(prev => ({ ...prev, fonada_secret: e.target.value }))}
-                  className="font-mono text-sm bg-slate-50"
-                />
-              </div>
-            </div>
-            <div className="bg-blue-50 border border-blue-100 rounded-md p-3 text-xs text-blue-800">
-              <strong>Note:</strong> Telecallers must have their exact 10-digit phone number saved in their profile for the dialer to ring their device.
-            </div>
-          </CardContent>
-        </Card>
-        )}
+
 
         {/* UNICORN AI CARD */}
         <Card className="shadow-sm border-slate-200">
