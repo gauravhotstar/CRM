@@ -114,34 +114,43 @@ export default function UploadPage() {
 
   // --- Effects ---
   useEffect(() => {
-    fetchTelecallers()
-    getCurrentUser()
-    checkActiveTelecallersCount()
+    const initData = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setCurrentUserId(user?.id || null)
+      if (user) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single()
+        if (profile?.tenant_id) {
+          setTenantId(profile.tenant_id)
+          await Promise.all([
+             fetchTelecallers(profile.tenant_id),
+             checkActiveTelecallersCount(profile.tenant_id)
+          ])
+        }
+      }
+    }
+    initData()
   }, [])
 
   // --- Data Fetching ---
-  const fetchTelecallers = async () => {
-    const { data } = await supabase.from("users").select("id, full_name, email").eq("role", "telecaller").eq("is_active", true)
+  const fetchTelecallers = async (tId: string) => {
+    const { data } = await supabase.from("users").select("id, full_name, email").eq("role", "telecaller").eq("is_active", true).eq("tenant_id", tId)
     if (data) setTelecallers(data)
   }
 
-  const getCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setCurrentUserId(user?.id || null)
-    if (user) {
-      const { data: profile } = await supabase
-        .from('users')
-        .select('tenant_id')
-        .eq('id', user.id)
-        .single()
-      if (profile) setTenantId(profile.tenant_id)
+  const checkActiveTelecallersCount = async (tId: string) => {
+    const { data: tenantUsers } = await supabase.from("users").select("id").eq("tenant_id", tId).eq("role", "telecaller")
+    const userIds = tenantUsers?.map(u => u.id) || []
+    if (userIds.length > 0) {
+      const today = new Date().toISOString().split('T')[0]
+      const { count } = await supabase.from("attendance").select("user_id", { count: 'exact', head: true }).eq("date", today).not("check_in", "is", null).in("user_id", userIds)
+      if (count !== null) setActiveCount(count)
+    } else {
+      setActiveCount(0)
     }
-  }
-
-  const checkActiveTelecallersCount = async () => {
-    const today = new Date().toISOString().split('T')[0]
-    const { count } = await supabase.from("attendance").select("user_id", { count: 'exact', head: true }).eq("date", today).not("check_in", "is", null)
-    if (count !== null) setActiveCount(count)
   }
 
   // --- Handlers: Step 1 (File Selection) ---
@@ -267,10 +276,15 @@ export default function UploadPage() {
 
     // 2. Prepare Auto-Assign List
     let distributionList: string[] = []
-    if (autoDistribute) {
-        const today = new Date().toISOString().split('T')[0]
-        const { data: activeUsers } = await supabase.from("attendance").select("user_id").eq("date", today).not("check_in", "is", null)
-        if (activeUsers) distributionList = shuffleArray(activeUsers.map((u: any) => u.user_id))
+    if (autoDistribute && tenantId) {
+        const { data: tenantUsers } = await supabase.from("users").select("id").eq("tenant_id", tenantId).eq("role", "telecaller").eq("is_active", true)
+        const tenantUserIds = tenantUsers?.map((u: any) => u.id) || []
+        
+        if (tenantUserIds.length > 0) {
+            const today = new Date().toISOString().split('T')[0]
+            const { data: activeUsers } = await supabase.from("attendance").select("user_id").eq("date", today).not("check_in", "is", null).in("user_id", tenantUserIds)
+            if (activeUsers) distributionList = shuffleArray(activeUsers.map((u: any) => u.user_id))
+        }
     }
 
     // 3. Batch Process
