@@ -28,38 +28,45 @@ export function AttendanceNotifications() {
   const supabase = createClient();
 
   useEffect(() => {
-    loadNotifications();
-    
-    // Set up real-time subscription for new notifications
-    const channelName = `notifications-${Math.random()}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-        },
-        (payload: any) => {
-          // Add new notification to the list
-          setNotifications(prev => [payload.new, ...prev]);
-          setUnreadCount(prev => prev + 1);
-        }
-      )
-      .subscribe();
+    let channel: any;
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const loadNotifications = async () => {
-    try {
+    const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const userNotifications = await attendanceNotificationService.getUnreadNotifications(user.id);
+      loadNotifications(user.id);
+      
+      // Set up real-time subscription for new notifications
+      const channelName = `notifications-${user.id}-${Math.random()}`;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload: any) => {
+            // Add new notification to the list
+            setNotifications(prev => [payload.new, ...prev]);
+            setUnreadCount(prev => prev + 1);
+          }
+        )
+        .subscribe();
+    };
+
+    init();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const loadNotifications = async (userId: string) => {
+    try {
+      const userNotifications = await attendanceNotificationService.getUnreadNotifications(userId);
       setNotifications(userNotifications);
       setUnreadCount(userNotifications.length);
     } catch (error) {

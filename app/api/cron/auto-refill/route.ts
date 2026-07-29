@@ -133,7 +133,7 @@ export async function GET(request: Request) {
                 .from("leads")
                 .select("id, notes")
                 .eq("tenant_id", tenantId) // ISOLATION: Only pull leads from this company!
-                .or("status.ilike.%nr%,status.ilike.%not_reachable%") 
+                .in("status", ["nr", "NR", "Not Reachable", "not_reachable", "Not_Reachable"]) 
                 .neq("assigned_to", agent.id) 
                 .order("last_contacted", { ascending: true, nullsFirst: true }) 
                 .limit(10);

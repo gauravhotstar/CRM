@@ -70,11 +70,24 @@ export function LiveLeaderboard() {
         
         // Listen for realtime inserts/updates
         const channelName = `leaderboard_updates-${Math.random()}`;
+        let timeoutId: NodeJS.Timeout;
+
+        const handleRealtimeUpdate = () => {
+            // Debounce for 5 seconds to prevent Thundering Herd
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                fetchLeaders();
+            }, 5000);
+        };
+
         const channel = supabase.channel(channelName)
-            .on('postgres_changes', { event: '*', schema: 'public', table: isRealEstate ? 'deals' : 'leads' }, fetchLeaders)
+            .on('postgres_changes', { event: '*', schema: 'public', table: isRealEstate ? 'deals' : 'leads' }, handleRealtimeUpdate)
             .subscribe();
             
-        return () => { supabase.removeChannel(channel) }
+        return () => { 
+            clearTimeout(timeoutId);
+            supabase.removeChannel(channel);
+        }
     }, [supabase, isRealEstate])
 
     return (

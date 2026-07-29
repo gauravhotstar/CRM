@@ -40,7 +40,8 @@ async function processSingleEvent(event: any) {
 
     if (!tenantId && mobileNumber) {
         let dbCustomerPhone = mobileNumber.replace(/^\+?91/, '').slice(-10);
-        const { data: lead } = await supabaseAdmin.from('leads').select('tenant_id').ilike('phone', `%${dbCustomerPhone}%`).limit(1).maybeSingle();
+        // Removed leading % from ilike to allow Postgres to use B-Tree indexes and avoid Full Table Scans
+        const { data: lead } = await supabaseAdmin.from('leads').select('tenant_id').or(`phone.eq.${dbCustomerPhone},phone.eq.+91${dbCustomerPhone},phone.eq.91${dbCustomerPhone}`).limit(1).maybeSingle();
         if (lead && lead.tenant_id) tenantId = lead.tenant_id;
     }
 

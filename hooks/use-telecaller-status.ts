@@ -72,23 +72,30 @@ export function useTelecallerStatus(telecallerIds: string[]) {
     fetchStatus(currentIds);
 
     // 2. Real-Time Subscription
+    const channelName = `public:attendance-${Math.random()}`;
     const attendanceChannel = supabase
-      .channel('public:attendance')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
           event: '*', // Listen for INSERT (check-in) and UPDATE (check-out)
           schema: 'public',
           table: 'attendance',
-          // Note: We cannot filter by specific user_ids in the subscription filter efficiently 
-          // without creating a channel per user. Listening to the whole table 
-          // and re-fetching our specific list is the most scalable approach here.
         },
         (payload: any) => {
-          // When ANY change happens in attendance, re-fetch our specific list
-          // to see if it affected our telecallers.
-          console.log("Attendance update detected:", payload);
-          fetchStatus(currentIds);
+          // Directly update the local state without hitting the database to prevent Thundering Herd
+          const record = payload.new || payload.old;
+          if (!record || !record.user_id) return;
+          
+          const currentIds = idsRef.current;
+          
+          if (currentIds.includes(record.user_id)) {
+             setTelecallerStatus(prev => {
+                const isOnline = Boolean(record.check_in && !record.check_out);
+                if (prev[record.user_id] === isOnline) return prev;
+                return { ...prev, [record.user_id]: isOnline };
+             });
+          }
         }
       )
       .subscribe();

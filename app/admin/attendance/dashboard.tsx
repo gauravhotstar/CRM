@@ -202,14 +202,24 @@ export function AdminAttendanceDashboard() {
     if (!tenantId) return;
 
     loadData();
+    let timeoutId: NodeJS.Timeout;
+
     const channel = supabase
       .channel('attendance-dashboard-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => {
-        loadData();
-        if(selectedUser) openUserModal(selectedUser);
+        // Debounce by 5 seconds to prevent Thundering Herd from multiple check-ins
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+            loadData();
+            if(selectedUser) openUserModal(selectedUser);
+        }, 5000);
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      
+    return () => { 
+      clearTimeout(timeoutId);
+      supabase.removeChannel(channel); 
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange, view, tenantId]); 
 
