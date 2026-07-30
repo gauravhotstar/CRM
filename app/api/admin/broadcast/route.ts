@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     // 1. Security Check: Ensure sender is an Admin
     const { data: sender } = await supabase
       .from('users')
-      .select('role')
+      .select('role, tenant_id')
       .eq('id', currentUserId)
       .single()
 
@@ -45,14 +45,18 @@ export async function POST(request: Request) {
     console.log(`📢 Broadcasting to ${users.length} users...`)
 
     // 3. Prepare Notification Data
-    const notifications = users.map(u => ({
-        user_id: u.id,
-        title: title,
-        message: message,
-        type: 'admin_broadcast',
-        is_read: false,
-        created_at: new Date().toISOString()
-    }))
+    const notifications = users.map(u => {
+        const payload: any = {
+            user_id: u.id,
+            title: title,
+            message: message,
+            type: 'admin_broadcast',
+            is_read: false,
+            created_at: new Date().toISOString()
+        };
+        if (sender.tenant_id) payload.tenant_id = sender.tenant_id;
+        return payload;
+    });
 
     // 4. Insert into Database (In-App Bell Icon)
     const { error: insertError } = await supabase.from('notifications').insert(notifications)

@@ -183,8 +183,10 @@ export function LeadsTable({ leads = [], telecallers = [] }: LeadsTableProps) {
           .insert({
             tenant_id: tenantId, // 🔴 INJECTED
             lead_id: selectedLead.id,
-            scheduled_date: callbackDate,
-            status: "scheduled"
+            user_id: selectedLead.assigned_to || user.id,
+            scheduled_at: callbackDate,
+            title: `Follow up: ${selectedLead.name}`,
+            status: "pending"
           })
 
         if (followUpError) throw followUpError

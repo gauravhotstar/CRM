@@ -310,6 +310,9 @@ export function ScheduleFollowUpModal({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error("Session expired"); return; }
+      
+      const { data: profile } = await supabase.from('users').select('tenant_id').eq('id', user.id).single();
+      const tenantId = profile?.tenant_id;
 
       const selectedLead = leads.find(lead => lead.id === leadId);
       const activityLabel = ACTIVITY_TYPES.find(a => a.id === activityType)?.label || "Follow-up";
@@ -338,14 +341,17 @@ ${notes || "No additional notes."}
         return;
       }
 
-      const { error: followUpError } = await supabase.from("follow_ups").insert({
+      const followUpPayload: any = {
         lead_id: leadId,
         user_id: user.id,
         title: title,
         scheduled_at: scheduledDateTime.toISOString(),
         notes: notes,
         status: "pending",
-      });
+      };
+      if (tenantId) followUpPayload.tenant_id = tenantId;
+
+      const { error: followUpError } = await supabase.from("follow_ups").insert(followUpPayload);
 
       if (followUpError) throw followUpError;
 

@@ -188,18 +188,28 @@ export function TelecallerLeadsTable({
     tomorrow.setHours(11, 0, 0, 0);
 
     try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Unauthorized");
+        
+        const { data: profile } = await supabase.from('users').select('tenant_id').eq('id', user.id).single();
+        const tenantId = profile?.tenant_id;
+
+        const followUpPayload: any = {
+            lead_id: lead.id,
+            user_id: user.id,
+            scheduled_at: tomorrow.toISOString(),
+            status: "pending",
+            title: `Retry: ${lead.name}`,
+            notes: "Auto-scheduled: No Response"
+        };
+        if (tenantId) followUpPayload.tenant_id = tenantId;
+
         await Promise.all([
              supabase.from("leads").update({ 
                  status: 'nr', 
                  last_contacted: new Date().toISOString() 
              }).eq('id', lead.id),
-             supabase.from("follow_ups").insert({
-                 lead_id: lead.id,
-                 scheduled_at: tomorrow.toISOString(),
-                 status: "pending",
-                 title: `Retry: ${lead.name}`,
-                 notes: "Auto-scheduled: No Response"
-             })
+             supabase.from("follow_ups").insert(followUpPayload)
         ]);
         
         router.refresh();

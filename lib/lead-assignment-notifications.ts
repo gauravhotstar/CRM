@@ -28,7 +28,7 @@ export class LeadAssignmentNotificationManager {
       // Get assigned user details
       const { data: assignedUser, error: userError } = await this.supabase
         .from("users")
-        .select("full_name, email, notification_preferences")
+        .select("full_name, email, notification_preferences, tenant_id")
         .eq("id", notification.assignedTo)
         .single()
 
@@ -50,7 +50,7 @@ export class LeadAssignmentNotificationManager {
       const details = this.formatLeadDetails(notification)
 
       // 1. Insert notification into notifications table
-      await this.storeNotification(notification, title, message);
+      await this.storeNotification(notification, title, message, assignedUser.tenant_id);
 
       // 2. Show browser notification
       await notificationService.showBrowserNotification({
@@ -84,9 +84,10 @@ export class LeadAssignmentNotificationManager {
     notification: LeadAssignmentNotification,
     title: string,
     message: string,
+    tenantId?: string
   ): Promise<void> {
     try {
-      const { error } = await this.supabase.from("notifications").insert({
+      const payload: any = {
         user_id: notification.assignedTo,
         type: "lead_assignment",
         title,
@@ -94,7 +95,10 @@ export class LeadAssignmentNotificationManager {
         follow_up_id: null,
         lead_id: notification.leadId,
         read: false,
-      });
+      };
+      if (tenantId) payload.tenant_id = tenantId;
+
+      const { error } = await this.supabase.from("notifications").insert(payload);
 
       if (error) {
         console.error("Error storing notification:", error);
@@ -160,7 +164,7 @@ export class LeadAssignmentNotificationManager {
       // Get assigned user details
       const { data: assignedUser, error: userError } = await this.supabase
         .from("users")
-        .select("full_name, email, notification_preferences")
+        .select("full_name, email, notification_preferences, tenant_id")
         .eq("id", assignedTo)
         .single()
 
@@ -180,15 +184,19 @@ export class LeadAssignmentNotificationManager {
       const message = `${count} leads have been assigned to you`
 
       // 1. Insert for all notifications
-      const notificationInserts = assignments.map(a => ({
-        user_id: assignedTo,
-        type: "lead_assignment",
-        title: "🎯 New Lead Assigned",
-        message: `${a.leadName} has been assigned to you.`,
-        follow_up_id: null,
-        lead_id: a.leadId,
-        read: false,
-      }));
+      const notificationInserts = assignments.map(a => {
+        const payload: any = {
+          user_id: assignedTo,
+          type: "lead_assignment",
+          title: "🎯 New Lead Assigned",
+          message: `${a.leadName} has been assigned to you.`,
+          follow_up_id: null,
+          lead_id: a.leadId,
+          read: false,
+        };
+        if (assignedUser.tenant_id) payload.tenant_id = assignedUser.tenant_id;
+        return payload;
+      });
       await this.supabase.from("notifications").insert(notificationInserts);
 
       // 2. Browser notification

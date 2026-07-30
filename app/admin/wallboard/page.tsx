@@ -328,7 +328,7 @@ export default function AdminWallboardPage() {
     }
 
     fetchSentimentStats();
-    const interval = setInterval(fetchSentimentStats, 15000);
+    const interval = setInterval(fetchSentimentStats, 60000); // 🔴 OPTIMIZED: Poll every 60s instead of 15s to reduce DB load
     return () => clearInterval(interval);
   }, [supabase]);
 
