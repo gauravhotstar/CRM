@@ -200,7 +200,7 @@ export default function TelecallerDashboard() {
 
   useEffect(() => {
     loadDashboardData()
-    const interval = setInterval(loadDashboardData, 5 * 60 * 1000) 
+    const interval = setInterval(loadDashboardData, 15 * 60 * 1000) 
     return () => clearInterval(interval)
   }, [loadDashboardData])
 

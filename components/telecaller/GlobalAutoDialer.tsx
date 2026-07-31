@@ -64,18 +64,6 @@ export function GlobalAutoDialer() {
         initDialer()
     }, [supabase])
 
-    useEffect(() => {
-        let pollInterval: NodeJS.Timeout;
-        if (dialState === 'on_call' && userIdRef.current) {
-            pollInterval = setInterval(async () => {
-                const { data } = await supabase.from('users').select('current_status, auto_dialer_status').eq('id', userIdRef.current!).single();
-                if (data && data.current_status !== 'on_call' && data.current_status !== 'dialing') {
-                    handleDatabaseStatusChange(data.current_status, data.auto_dialer_status);
-                }
-            }, 3000);
-        }
-        return () => { if (pollInterval) clearInterval(pollInterval); }
-    }, [dialState, supabase]);
 
     useEffect(() => {
         const triggerNextCall = async () => {
