@@ -99,8 +99,16 @@ export default function AdminWhatsAppPanel() {
     fetchLeadsAndUsers()
     
     const leadChannel = supabase.channel('admin_leads_update')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads' }, () => {
-        fetchLeadsAndUsers() 
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads' }, (payload: any) => {
+        const updatedLead = payload.new;
+        setLeads(prev => {
+          const exists = prev.find(l => l.id === updatedLead.id);
+          if (exists) {
+            return prev.map(l => l.id === updatedLead.id ? { ...l, ...updatedLead } : l)
+                       .sort((a, b) => new Date(b.last_message_at || b.created_at).getTime() - new Date(a.last_message_at || a.created_at).getTime());
+          }
+          return prev;
+        });
       }).subscribe()
 
     const globalNotificationChannel = supabase.channel('global_notifications')

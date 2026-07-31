@@ -135,69 +135,16 @@ export function GlobalAutoDialer() {
 
         try {
             let nextLead = null;
-            const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-            const todayISO = startOfToday.toISOString();
-
-            const sortLeads = (leads: any[], dateField: string = 'created_at') => {
-                const weights: Record<string, number> = { "urgent": 4, "high": 3, "medium": 2, "low": 1, "none": 0 };
-                return leads.sort((a, b) => {
-                    const wA = weights[a.priority || "none"] || 0;
-                    const wB = weights[b.priority || "none"] || 0;
-                    if (wA !== wB) return wB - wA; 
-                    return new Date(a[dateField] || 0).getTime() - new Date(b[dateField] || 0).getTime(); 
-                });
-            };
-
-            const { data: ownNew } = await supabase.from('leads').select('*').eq('assigned_to', uid).in('status', ['New Lead', 'new']).limit(50);
-            if (ownNew && ownNew.length > 0) nextLead = sortLeads(ownNew, 'created_at')[0];
-
-            if (!nextLead) {
-                const { data: unassignedNew } = await supabase.from('leads').select('*').is('assigned_to', null).in('status', ['New Lead', 'new']).limit(50);
-                if (unassignedNew && unassignedNew.length > 0) {
-                    nextLead = sortLeads(unassignedNew, 'created_at')[0];
-                    await supabase.from('leads').update({ assigned_to: uid }).eq('id', nextLead.id); 
-                } 
-                else {
-                    const { data: otherAgentsLeads } = await supabase.from('leads').select('*').in('status', ['New Lead', 'new']).neq('assigned_to', uid).not('assigned_to', 'is', null).limit(1000);
-                    if (otherAgentsLeads && otherAgentsLeads.length > 0) {
-                        const counts: Record<string, number> = {};
-                        otherAgentsLeads.forEach((l: any) => { counts[l.assigned_to] = (counts[l.assigned_to] || 0) + 1; });
-                        const overloadedAgent = Object.keys(counts).find(aId => counts[aId] > 5);
-                        if (overloadedAgent) {
-                            const stealableLeads = otherAgentsLeads.filter((l: any) => l.assigned_to === overloadedAgent);
-                            nextLead = sortLeads(stealableLeads, 'created_at')[0];
-                            await supabase.from('leads').update({ assigned_to: uid }).eq('id', nextLead.id);
-                        }
-                    }
-                }
+            
+            // Optimized: Bundle all 7 queries into a single database RPC call
+            const { data: rpcLead, error: rpcError } = await supabase.rpc('get_next_auto_dial_lead', { p_user_id: uid });
+            
+            if (rpcError) {
+                console.error("AutoDialer RPC Error:", rpcError);
             }
-
-            if (!nextLead) {
-                const { data: queueLeads } = await supabase.from('leads').select('*').eq('assigned_to', uid).in('status', ['Follow Up', 'Contacted', 'follow_up']).lt('last_contacted', todayISO).limit(50);
-                if (queueLeads && queueLeads.length > 0) nextLead = sortLeads(queueLeads, 'last_contacted')[0];
-            }
-
-            if (!nextLead) {
-                const { data: nrLeads } = await supabase.from('leads').select('*').eq('assigned_to', uid).in('status', ['nr', 'Not Reachable']).limit(50);
-                if (nrLeads && nrLeads.length > 0) {
-                    const leadIds = nrLeads.map((l: any) => l.id);
-                    const { data: todayLogs } = await supabase.from('call_logs').select('lead_id').in('lead_id', leadIds).gte('created_at', todayISO);
-                    const attemptCounts: Record<string, number> = {};
-                    if (todayLogs) { todayLogs.forEach((log: any) => { attemptCounts[log.lead_id] = (attemptCounts[log.lead_id] || 0) + 1; }); }
-                    const callableNrLeads = nrLeads.filter((l: any) => (attemptCounts[l.id] || 0) < 4);
-                    if (callableNrLeads.length > 0) nextLead = sortLeads(callableNrLeads, 'last_contacted')[0];
-                }
-            }
-
-            if (!nextLead) {
-                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                const { data: intLeads } = await supabase.from('leads').select('*').eq('assigned_to', uid).in('status', ['Interested', 'interested']).lt('last_contacted', twentyFourHoursAgo).limit(50);
-                if (intLeads && intLeads.length > 0) nextLead = sortLeads(intLeads, 'last_contacted')[0];
-            }
-
-            if (!nextLead) {
-                const { data: notIntLeads } = await supabase.from('leads').select('*').eq('assigned_to', uid).in('status', ['Not Interested', 'Not_Interested', 'recycle_pool']).lt('last_contacted', todayISO).limit(50);
-                if (notIntLeads && notIntLeads.length > 0) nextLead = sortLeads(notIntLeads, 'last_contacted')[0];
+            
+            if (rpcLead && !rpcError) {
+                nextLead = rpcLead;
             }
 
             if (!nextLead) {
