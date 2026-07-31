@@ -203,10 +203,9 @@ export function GlobalAutoDialer() {
             if (!nextLead) {
                 changeState('empty');
                 setCurrentCustomer(null);
-                setTimeout(async () => {
-                    const { data } = await supabase.from('users').select('current_status, auto_dialer_status').eq('id', uid).single()
-                    if (data?.auto_dialer_status !== 'paused' && (data?.current_status === 'active' || data?.current_status === 'ready')) executeAutoDial()
-                }, 10000)
+                setTimeout(() => {
+                    if (stateLock.current === 'empty') executeAutoDial();
+                }, 30000)
                 return
             }
 

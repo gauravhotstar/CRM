@@ -40,25 +40,13 @@ export default async function TelecallerLeadsPage({
   const sortOrder = searchParams.sort_order === 'asc'
 
   // Fetch exact counts performantly via DB rather than fetching all rows
-  const [
-    totalCountRes,
-    newCountRes,
-    contactedCountRes,
-    loginCountRes,
-    disbursedCountRes
-  ] = await Promise.all([
-    supabase.from("leads").select("*", { count: "exact", head: true }).eq("assigned_to", user.id),
-    supabase.from("leads").select("*", { count: "exact", head: true }).eq("assigned_to", user.id).in("status", ["new", "New Lead", "New", "NEW", "new lead"]),
-    supabase.from("leads").select("*", { count: "exact", head: true }).eq("assigned_to", user.id).in("status", ["contacted", "Contacted", "Interested", "interested"]),
-    supabase.from("leads").select("*", { count: "exact", head: true }).eq("assigned_to", user.id).in("status", ["login", "Login", "login done", "Login Done"]),
-    supabase.from("leads").select("*", { count: "exact", head: true }).eq("assigned_to", user.id).in("status", ["disbursed", "Disbursed", "converted", "Converted"])
-  ]);
-
-  const totalCount = totalCountRes.count || 0;
-  const newCount = newCountRes.count || 0;
-  const contactedCount = contactedCountRes.count || 0;
-  const loginCount = loginCountRes.count || 0;
-  const disbursedCount = disbursedCountRes.count || 0;
+  const { data: countsData } = await supabase.rpc('get_telecaller_lead_counts', { p_user_id: user.id });
+  
+  const totalCount = countsData?.total || 0;
+  const newCount = countsData?.new || 0;
+  const contactedCount = countsData?.contacted || 0;
+  const loginCount = countsData?.login || 0;
+  const disbursedCount = countsData?.disbursed || 0;
 
   const contactRate = totalCount ? Math.round((contactedCount / totalCount) * 100) : 0;
   
