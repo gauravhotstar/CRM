@@ -258,6 +258,9 @@ export default function SuperAdminConsole() {
           <p className="text-slate-500 mt-1">Manage global workspaces, billing plans, and instance provisioning.</p>
         </div>
         <div className="flex gap-2">
+            <Button onClick={() => router.push('/super-admin/analytics')} variant="outline" className="shadow-sm bg-white hover:bg-slate-50 text-indigo-600 border-indigo-200">
+                <Activity className="h-4 w-4 mr-2" /> View Analytics
+            </Button>
             <Button onClick={() => setShowAddStatusModal(true)} variant="outline" className="shadow-sm">
                 <Plus className="h-4 w-4 mr-2" /> Global Status
             </Button>
