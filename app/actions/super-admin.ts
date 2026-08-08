@@ -72,6 +72,8 @@ export async function provisionNewTenant(formData: {
         // 6. Initialize blank API settings for the new tenant
         await supabaseAdmin.from('tenant_settings').insert({ tenant_id: newOrg.id })
 
+        await logSystemActivity(user.id, 'PROVISION_TENANT', `Provisioned new tenant: ${formData.orgName}`);
+
         return { success: true, message: `Successfully provisioned ${formData.orgName}!` }
 
     } catch (error: any) {
@@ -106,6 +108,8 @@ export async function updateTenantSettings(orgId: string, enabledStatuses: strin
             .eq('id', orgId)
 
         if (error) throw new Error("Failed to update organization: " + error.message)
+
+        await logSystemActivity(user.id, 'UPDATE_SETTINGS', `Updated settings for tenant: ${orgId}`);
 
         return { success: true, message: "Tenant settings updated successfully!" }
     } catch (error: any) {
@@ -257,6 +261,8 @@ export async function toggleTenantSuspension(orgId: string, currentStatus: boole
 
         if (error) throw new Error("Failed to update tenant suspension: " + error.message)
 
+        await logSystemActivity(user.id, 'SUSPEND_TENANT', `Tenant ${orgId} was ${!currentStatus ? 'suspended' : 'activated'}.`);
+
         return { success: true, message: `Tenant has been successfully ${!currentStatus ? 'suspended' : 'activated'}.` }
     } catch (error: any) {
         console.error("Toggle Suspension Error:", error)
@@ -389,6 +395,54 @@ export async function toggleAnnouncement(id: string, currentStatus: boolean) {
     } catch (error: any) {
         console.error("Toggle Announcement Error:", error)
         return { success: false, error: error.message || "Failed to toggle announcement" }
+    }
+}
+
+export async function logSystemActivity(userId: string, actionType: string, description: string) {
+    try {
+        const supabaseAdmin = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+        await supabaseAdmin.from('system_activity_logs').insert({
+            user_id: userId,
+            action_type: actionType,
+            description: description
+        })
+    } catch (e) {
+        console.error("Failed to log system activity:", e)
+    }
+}
+
+export async function fetchRecentSystemActivity() {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error("Unauthorized")
+
+        const { data: caller } = await supabase.from('users').select('role').eq('id', user.id).single()
+        if (caller?.role !== 'super_admin') {
+            throw new Error("Forbidden")
+        }
+
+        const supabaseAdmin = createAdminClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+
+        // Using users(full_name) might require a relationship, but let's just fetch logs
+        // and manually fetch user names if needed, or rely on foreign key.
+        const { data: logs, error } = await supabaseAdmin
+            .from('system_activity_logs')
+            .select('*, users(full_name)')
+            .order('created_at', { ascending: false })
+            .limit(10)
+
+        if (error) throw new Error(error.message)
+        return { success: true, data: logs }
+    } catch (error: any) {
+        console.error("Fetch Activity Error:", error)
+        return { success: false, error: error.message || "Failed to fetch activity" }
     }
 }
 

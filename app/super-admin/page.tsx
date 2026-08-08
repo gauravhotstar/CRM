@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Building2, Users, Loader2, Plus, Server, ShieldAlert, Settings, CheckSquare, MessageSquare, BarChart3, Presentation, Workflow, CloudUpload, Activity, Lock, Unlock, UserCheck, MapPin } from "lucide-react"
 import { toast } from "sonner"
 
-import { provisionNewTenant, updateTenantSettings, fetchAllOrganizations, fetchGlobalStatuses, addGlobalStatus, toggleTenantSuspension, impersonateTenant, fetchAllAnnouncements, createAnnouncement, toggleAnnouncement } from "@/app/actions/super-admin"
+import { provisionNewTenant, updateTenantSettings, fetchAllOrganizations, fetchGlobalStatuses, addGlobalStatus, toggleTenantSuspension, impersonateTenant, fetchAllAnnouncements, createAnnouncement, toggleAnnouncement, fetchRecentSystemActivity } from "@/app/actions/super-admin"
 import { MASTER_STATUSES, DEFAULT_WORKFLOW_TRIGGERS, resolveIcon } from "@/lib/lead-statuses"
 import { LoadingSkeleton } from "@/components/loading-skeleton"
 import { useRouter } from "next/navigation"
@@ -35,6 +35,7 @@ export default function SuperAdminConsole() {
   const [isImpersonating, setIsImpersonating] = useState<string | null>(null)
   
   const [announcements, setAnnouncements] = useState<any[]>([])
+  const [systemActivity, setSystemActivity] = useState<any[]>([])
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false)
   const [isCreatingAnnouncement, setIsCreatingAnnouncement] = useState(false)
   const [announcementForm, setAnnouncementForm] = useState({ title: "", message: "", type: "info" })
@@ -217,6 +218,12 @@ export default function SuperAdminConsole() {
         setAnnouncements(annRes.data)
     }
 
+    // Fetch Recent Activity
+    const activityRes = await fetchRecentSystemActivity()
+    if (activityRes.success && activityRes.data) {
+        setSystemActivity(activityRes.data)
+    }
+
     setLoading(false)
   }
 
@@ -278,51 +285,80 @@ export default function SuperAdminConsole() {
         </div>
       </div>
 
-      {/* Announcements Section */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
-            <div>
-                <CardTitle className="text-lg font-bold text-slate-800">Global Announcements</CardTitle>
-                <CardDescription>Push alerts to all active users across workspaces.</CardDescription>
-            </div>
-            <Button size="sm" onClick={() => setShowAnnouncementModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
-                <Plus className="h-4 w-4 mr-1" /> New Broadcast
-            </Button>
-        </CardHeader>
-        <CardContent className="pt-4">
-            {announcements.length === 0 ? (
-                <div className="text-sm text-slate-500 text-center py-4">No active announcements.</div>
-            ) : (
-                <div className="space-y-3">
-                    {announcements.map((ann) => (
-                        <div key={ann.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-slate-800 text-sm">{ann.title}</span>
-                                    <Badge variant="outline" className={
-                                        ann.type === 'warning' ? "text-amber-600 bg-amber-50" :
-                                        ann.type === 'error' ? "text-red-600 bg-red-50" :
-                                        ann.type === 'success' ? "text-green-600 bg-green-50" :
-                                        "text-blue-600 bg-blue-50"
-                                    }>{ann.type}</Badge>
-                                    {!ann.is_active && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1">{ann.message}</p>
-                            </div>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className={ann.is_active ? "text-red-600 hover:text-red-700 hover:bg-red-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
-                                onClick={() => handleToggleAnnouncement(ann.id, ann.is_active)}
-                            >
-                                {ann.is_active ? "Deactivate" : "Activate"}
-                            </Button>
-                        </div>
-                    ))}
+      {/* Top Dash: Announcements & Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="border-slate-200 shadow-sm flex flex-col">
+            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle className="text-lg font-bold text-slate-800">Global Announcements</CardTitle>
+                    <CardDescription>Push alerts to all active users across workspaces.</CardDescription>
                 </div>
-            )}
-        </CardContent>
-      </Card>
+                <Button size="sm" onClick={() => setShowAnnouncementModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
+                    <Plus className="h-4 w-4 mr-1" /> New Broadcast
+                </Button>
+            </CardHeader>
+            <CardContent className="pt-4 flex-1 overflow-auto max-h-80">
+                {announcements.length === 0 ? (
+                    <div className="text-sm text-slate-500 text-center py-4">No active announcements.</div>
+                ) : (
+                    <div className="space-y-3">
+                        {announcements.map((ann) => (
+                            <div key={ann.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-slate-800 text-sm">{ann.title}</span>
+                                        <Badge variant="outline" className={
+                                            ann.type === 'warning' ? "text-amber-600 bg-amber-50" :
+                                            ann.type === 'error' ? "text-red-600 bg-red-50" :
+                                            ann.type === 'success' ? "text-green-600 bg-green-50" :
+                                            "text-blue-600 bg-blue-50"
+                                        }>{ann.type}</Badge>
+                                        {!ann.is_active && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">{ann.message}</p>
+                                </div>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className={ann.is_active ? "text-red-600 hover:text-red-700 hover:bg-red-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                                    onClick={() => handleToggleAnnouncement(ann.id, ann.is_active)}
+                                >
+                                    {ann.is_active ? "Deactivate" : "Activate"}
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-sm flex flex-col">
+            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle className="text-lg font-bold text-slate-800">Recent System Activity</CardTitle>
+                    <CardDescription>Latest changes made by super admins globally.</CardDescription>
+                </div>
+            </CardHeader>
+            <CardContent className="pt-4 flex-1 overflow-auto max-h-80">
+                {systemActivity.length === 0 ? (
+                    <div className="text-sm text-slate-500 text-center py-4">No recent activity.</div>
+                ) : (
+                    <div className="space-y-3">
+                        {systemActivity.map((log) => (
+                            <div key={log.id} className="flex flex-col border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                                <div className="flex items-center gap-2">
+                                    <Badge variant="secondary" className="text-[10px] uppercase text-slate-600">{log.action_type}</Badge>
+                                    <span className="text-xs text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
+                                </div>
+                                <p className="text-sm text-slate-700 mt-1">{log.description}</p>
+                                <p className="text-xs text-slate-400">By: {log.users?.full_name || 'System'}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+      </div>
 
       {/* Organization List */}
       <div>
