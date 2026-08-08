@@ -1,7 +1,7 @@
 import { EnhancedAttendanceService } from "../lib/attendance-service-enhanced";
 import { AttendanceRecord, User } from "../lib/database-schema";
 
-// Mock Supabase client 
+// Mock Supabase client
 const mockSupabase = {
   from: jest.fn().mockReturnThis(),
   select: jest.fn().mockReturnThis(),
