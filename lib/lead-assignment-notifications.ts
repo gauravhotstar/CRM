@@ -19,6 +19,8 @@ export interface LeadAssignmentNotification {
 
 export class LeadAssignmentNotificationManager {
   private supabase = createClient()
+  private assignmentQueue: any[] = []
+  private batchTimeoutId: ReturnType<typeof setTimeout> | null = null
 
   // Send notification when lead is assigned
   async notifyLeadAssignment(notification: LeadAssignmentNotification): Promise<void> {
@@ -285,40 +287,79 @@ export class LeadAssignmentNotificationManager {
       })
   }
 
-  // Handle real-time assignment notification
-  private async handleRealtimeAssignment(lead: any): Promise<void> {
-    try {
-      console.log("Handling real-time assignment for lead:", lead)
-      
-      let leadDetails = lead;
-      if (!lead.name || !lead.phone) {
-        const { data, error } = await this.supabase
-          .from("leads")
-          .select("name, phone, email, priority, loan_amount, loan_type, assigned_by, assigned_at")
-          .eq("id", lead.id)
-          .single()
-        
-        if (!error && data) {
-          leadDetails = { ...lead, ...data }
-        }
-      }
-      
-      const notification: LeadAssignmentNotification = {
-        leadId: leadDetails.id,
-        leadName: leadDetails.name || "Unknown Lead",
-        leadPhone: leadDetails.phone || "No Phone",
-        leadEmail: leadDetails.email,
-        assignedTo: leadDetails.assigned_to,
-        assignedBy: leadDetails.assigned_by || "System",
-        assignedAt: leadDetails.assigned_at || new Date().toISOString(),
-        priority: leadDetails.priority,
-        loanAmount: leadDetails.loan_amount,
-        loanType: leadDetails.loan_type,
-      }
+  // Handle real-time assignment notification with debouncing
+  private handleRealtimeAssignment(lead: any): void {
+    this.assignmentQueue.push(lead);
 
-      await this.notifyLeadAssignment(notification)
+    if (this.batchTimeoutId) {
+      clearTimeout(this.batchTimeoutId);
+    }
+
+    this.batchTimeoutId = setTimeout(() => {
+      this.processAssignmentQueue();
+    }, 1500); // Wait 1.5s to see if more leads are assigned
+  }
+
+  // Process the accumulated queue
+  private async processAssignmentQueue(): Promise<void> {
+    if (this.assignmentQueue.length === 0) return;
+
+    const leadsToProcess = [...this.assignmentQueue];
+    this.assignmentQueue = [];
+    this.batchTimeoutId = null;
+
+    try {
+      if (leadsToProcess.length === 1) {
+        // Single assignment
+        const lead = leadsToProcess[0];
+        let leadDetails = lead;
+        if (!lead.name || !lead.phone) {
+          const { data, error } = await this.supabase
+            .from("leads")
+            .select("name, phone, email, priority, loan_amount, loan_type, assigned_by, assigned_at")
+            .eq("id", lead.id)
+            .single();
+          
+          if (!error && data) {
+            leadDetails = { ...lead, ...data };
+          }
+        }
+        
+        const notification: LeadAssignmentNotification = {
+          leadId: leadDetails.id,
+          leadName: leadDetails.name || "Unknown Lead",
+          leadPhone: leadDetails.phone || "No Phone",
+          leadEmail: leadDetails.email,
+          assignedTo: leadDetails.assigned_to,
+          assignedBy: leadDetails.assigned_by || "System",
+          assignedAt: leadDetails.assigned_at || new Date().toISOString(),
+          priority: leadDetails.priority,
+          loanAmount: leadDetails.loan_amount,
+          loanType: leadDetails.loan_type,
+        };
+
+        await this.notifyLeadAssignment(notification);
+      } else {
+        // Bulk assignment
+        const notifications: LeadAssignmentNotification[] = leadsToProcess.map(lead => ({
+          leadId: lead.id,
+          leadName: lead.name || "Unknown Lead",
+          leadPhone: lead.phone || "No Phone",
+          leadEmail: lead.email,
+          assignedTo: lead.assigned_to,
+          assignedBy: lead.assigned_by || "System",
+          assignedAt: lead.assigned_at || new Date().toISOString(),
+          priority: lead.priority,
+          loanAmount: lead.loan_amount,
+          loanType: lead.loan_type,
+        }));
+        
+        // All leads in the queue should have the same assignedTo (the current user)
+        const assignedTo = notifications[0].assignedTo;
+        await this.notifyBulkAssignment(notifications, assignedTo);
+      }
     } catch (error) {
-      console.error("Error handling real-time assignment:", error)
+      console.error("Error processing assignment queue:", error);
     }
   }
 
