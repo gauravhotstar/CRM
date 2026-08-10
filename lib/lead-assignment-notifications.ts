@@ -250,6 +250,7 @@ export class LeadAssignmentNotificationManager {
           event: "UPDATE",
           schema: "public",
           table: "leads",
+          filter: `assigned_to=eq.${userId}`
         },
         (payload: any) => {
           console.log("Received lead assignment UPDATE event:", payload)
@@ -266,6 +267,7 @@ export class LeadAssignmentNotificationManager {
           event: "INSERT",
           schema: "public",
           table: "leads",
+          filter: `assigned_to=eq.${userId}`
         },
         (payload: any) => {
           console.log("Received new lead INSERT event:", payload)
