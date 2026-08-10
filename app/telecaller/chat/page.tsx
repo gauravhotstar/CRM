@@ -75,9 +75,14 @@ export default function AdminWhatsAppPanel() {
 
   // 1. FETCH ALL LEADS
   const fetchLeadsAndUsers = async () => {
+    // Get the current user
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
     const { data: leadsData } = await supabase
       .from('leads')
       .select('id, name, phone, status, last_message_at, unread_count, assigned_to, created_at, last_message_content, last_message_type')
+      .eq('assigned_to', user.id) // ONLY fetch leads assigned to this telecaller
       .order('last_message_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .limit(150)
