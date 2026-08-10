@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Building2, Users, Loader2, Plus, Server, ShieldAlert, Settings, CheckSquare, MessageSquare, BarChart3, Presentation, Workflow, CloudUpload, Activity, Lock, Unlock, UserCheck, MapPin } from "lucide-react"
 import { toast } from "sonner"
 
-import { provisionNewTenant, updateTenantSettings, fetchAllOrganizations, fetchGlobalStatuses, addGlobalStatus, toggleTenantSuspension, impersonateTenant, fetchAllAnnouncements, createAnnouncement, toggleAnnouncement, fetchRecentSystemActivity } from "@/app/actions/super-admin"
+import { provisionNewTenant, updateTenantSettings, fetchAllOrganizations, fetchGlobalStatuses, addGlobalStatus, toggleTenantSuspension, impersonateTenant, fetchAllAnnouncements, createAnnouncement, toggleAnnouncement, fetchRecentSystemActivity, deleteTenantLeadsByStatus } from "@/app/actions/super-admin"
 import { MASTER_STATUSES, DEFAULT_WORKFLOW_TRIGGERS, resolveIcon } from "@/lib/lead-statuses"
 import { LoadingSkeleton } from "@/components/loading-skeleton"
 import { useRouter } from "next/navigation"
@@ -60,6 +60,12 @@ export default function SuperAdminConsole() {
   const [enabledStatuses, setEnabledStatuses] = useState<string[]>([])
   const [workflowTriggers, setWorkflowTriggers] = useState<any>(DEFAULT_WORKFLOW_TRIGGERS)
   const [enabledModules, setEnabledModules] = useState<string[]>([])
+
+  // Delete Leads State
+  const [showDeleteLeadsModal, setShowDeleteLeadsModal] = useState(false)
+  const [deleteLeadsOrg, setDeleteLeadsOrg] = useState<any>(null)
+  const [deleteLeadsStatus, setDeleteLeadsStatus] = useState("")
+  const [isDeletingLeads, setIsDeletingLeads] = useState(false)
 
   const AVAILABLE_MODULES = [
     { id: "leads", name: "Lead Management", icon: Users },
@@ -139,6 +145,23 @@ export default function SuperAdminConsole() {
       toast.error(res.error)
     }
     setIsImpersonating(null)
+  }
+
+  const handleDeleteLeads = async () => {
+    if (!deleteLeadsOrg || !deleteLeadsStatus) return toast.error("Please select a status.")
+    
+    if (!confirm(`Are you absolutely sure you want to delete ALL leads with status '${deleteLeadsStatus}' for ${deleteLeadsOrg.name}? This action CANNOT be undone.`)) return;
+
+    setIsDeletingLeads(true)
+    const res = await deleteTenantLeadsByStatus(deleteLeadsOrg.id, deleteLeadsStatus)
+    if (res.success) {
+      toast.success(res.message)
+      setShowDeleteLeadsModal(false)
+      fetchOrganizations() // Refresh counts
+    } else {
+      toast.error(res.error)
+    }
+    setIsDeletingLeads(false)
   }
 
   const handleCreateAnnouncement = async () => {
@@ -415,6 +438,19 @@ export default function SuperAdminConsole() {
                                 onClick={() => handleToggleSuspension(org.id, !!org.is_suspended)}
                             >
                                 {isTogglingSuspension === org.id ? <Loader2 className="h-4 w-4 animate-spin" /> : org.is_suspended ? <Unlock className="h-4 w-4 text-green-600" /> : <Lock className="h-4 w-4 text-red-600" />}
+                            </Button>
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => {
+                                    setDeleteLeadsOrg(org)
+                                    setDeleteLeadsStatus("")
+                                    setShowDeleteLeadsModal(true)
+                                }} 
+                                className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete Leads"
+                            >
+                                Delete Leads
                             </Button>
                             <Button variant="ghost" size="sm" onClick={() => openSettings(org)} className="text-xs">
                                 <Settings className="h-3.5 w-3.5 mr-1" /> Settings
@@ -763,6 +799,55 @@ export default function SuperAdminConsole() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Leads Modal */}
+      <Dialog open={showDeleteLeadsModal} onOpenChange={setShowDeleteLeadsModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+                <ShieldAlert className="h-5 w-5" /> Bulk Delete Leads
+            </DialogTitle>
+            <DialogDescription>
+              Permanently delete leads for <strong>{deleteLeadsOrg?.name}</strong> by status. This action cannot be undone and skips the recycle bin.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+                <Label>Select Status to Delete</Label>
+                <Select value={deleteLeadsStatus} onValueChange={setDeleteLeadsStatus}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select status..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {deleteLeadsOrg?.enabled_statuses?.map((sv: string) => {
+                            const statusObj = currentMasterStatuses.find(s => s.value === sv)
+                            return statusObj ? (
+                                <SelectItem key={statusObj.value} value={statusObj.value}>
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-2 h-2 rounded-full ${statusObj.color.split(' ')[0]}`}></div>
+                                        {statusObj.label}
+                                    </div>
+                                </SelectItem>
+                            ) : null
+                        })}
+                    </SelectContent>
+                </Select>
+            </div>
+            
+            <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-md text-sm">
+                <strong>Warning:</strong> Ensure you have confirmed with the tenant before performing this destructive action.
+            </div>
+          </div>
+
+          <DialogFooter className="sm:justify-end gap-2">
+            <Button variant="ghost" onClick={() => setShowDeleteLeadsModal(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDeleteLeads} disabled={isDeletingLeads || !deleteLeadsStatus}>
+              {isDeletingLeads ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {isDeletingLeads ? "Deleting..." : "Permanently Delete Leads"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
