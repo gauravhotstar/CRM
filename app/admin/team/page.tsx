@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -23,6 +24,7 @@ interface TeamMember {
   role: string
   manager_id: string | null
   current_status: string
+  cloudconnect_enabled: boolean
 }
 
 export default function TeamManagementPage() {
@@ -48,7 +50,7 @@ export default function TeamManagementPage() {
     // Thanks to RLS, this automatically only fetches users in YOUR company!
     const { data, error } = await supabase
       .from('users')
-      .select('id, full_name, email, role, manager_id, current_status')
+      .select('id, full_name, email, role, manager_id, current_status, cloudconnect_enabled')
       .order('created_at', { ascending: true })
 
     if (data) setMembers(data as TeamMember[])
@@ -105,6 +107,20 @@ export default function TeamManagementPage() {
   const startEdit = (user: TeamMember) => {
       setEditingUserId(user.id)
       setEditData({ role: user.role || 'telecaller', manager_id: user.manager_id || 'none' })
+  }
+
+  const toggleCloudConnect = async (userId: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('users')
+      .update({ cloudconnect_enabled: !currentStatus })
+      .eq('id', userId)
+
+    if (error) {
+      toast.error("Failed to update dialer assignment")
+    } else {
+      toast.success("Dialer assignment updated successfully")
+      setMembers(members.map(m => m.id === userId ? { ...m, cloudconnect_enabled: !currentStatus } : m))
+    }
   }
 
   if (loading) return <LoadingSkeleton variant="table" cols={5} rows={6} />;
@@ -184,6 +200,7 @@ export default function TeamManagementPage() {
                   <TableHead className="text-xs font-bold text-slate-500 dark:text-slate-450 uppercase py-3.5 pl-5 tracking-wider">Employee Details</TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 dark:text-slate-450 uppercase py-3.5 tracking-wider">Role</TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 dark:text-slate-450 uppercase py-3.5 tracking-wider">Reporting Manager</TableHead>
+                  <TableHead className="text-xs font-bold text-slate-500 dark:text-slate-450 uppercase py-3.5 tracking-wider">CloudConnect</TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 dark:text-slate-450 uppercase py-3.5 tracking-wider">Status</TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 dark:text-slate-450 uppercase py-3.5 tracking-wider text-right pr-5">Actions</TableHead>
                 </TableRow>
@@ -246,6 +263,18 @@ export default function TeamManagementPage() {
                             {manager ? manager.full_name : "Top-level Workspace"}
                           </span>
                         )}
+                      </TableCell>
+
+                      <TableCell className="py-3.5">
+                        <div className="flex items-center gap-2">
+                          <Switch 
+                            checked={user.cloudconnect_enabled || false}
+                            onCheckedChange={() => toggleCloudConnect(user.id, user.cloudconnect_enabled)}
+                          />
+                          <span className="text-[10px] uppercase font-bold text-slate-500">
+                            {user.cloudconnect_enabled ? 'ON' : 'OFF'}
+                          </span>
+                        </div>
                       </TableCell>
 
                       <TableCell className="py-3.5">

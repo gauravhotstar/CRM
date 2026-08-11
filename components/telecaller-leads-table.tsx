@@ -121,13 +121,14 @@ export function TelecallerLeadsTable({
       setIsDialingC2C(leadId); // Show loading spinner
       
       try {
-          const isCloudConnectEnabled = org?.enabled_modules?.includes('cloudconnect_telephony');
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error("Agent session not found. Please log in.");
+
+          const { data: userData } = await supabase.from('users').select('cloudconnect_enabled').eq('id', user.id).single();
+          const isCloudConnectEnabled = org?.enabled_modules?.includes('cloudconnect_telephony') && userData?.cloudconnect_enabled;
           
           if (isCloudConnectEnabled) {
               toast.info("Initiating cloud call...", { description: "Please wait for your phone to ring." });
-              
-              const { data: { user } } = await supabase.auth.getUser();
-              if (!user) throw new Error("Agent session not found. Please log in.");
               
               const sessionId = localStorage.getItem("cc_session_id");
               if (!sessionId) throw new Error("Softphone not initialized. Ensure the dialer is connected.");

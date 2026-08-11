@@ -237,7 +237,8 @@ export default function LeadDetailsPage({ params }: { params: { id: string } }) 
         if (!lead || isDialing) return;
         setIsDialing(true);
         
-        const isCloudConnectEnabled = org?.enabled_modules?.includes('cloudconnect_telephony');
+        const { data: userData } = await supabase.from('users').select('cloudconnect_enabled').eq('id', agentId).single();
+        const isCloudConnectEnabled = org?.enabled_modules?.includes('cloudconnect_telephony') && userData?.cloudconnect_enabled;
         
         try {
             if (isCloudConnectEnabled) {

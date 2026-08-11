@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Building2, Users, Loader2, Plus, Server, ShieldAlert, Settings, CheckSquare, MessageSquare, BarChart3, Presentation, Workflow, CloudUpload, Activity, Lock, Unlock, UserCheck, MapPin } from "lucide-react"
+import { Building2, Users, Loader2, Plus, Server, ShieldAlert, Settings, CheckSquare, MessageSquare, BarChart3, Presentation, Workflow, CloudUpload, Activity, Lock, Unlock, UserCheck, MapPin, Phone } from "lucide-react"
 import { toast } from "sonner"
 
 import { provisionNewTenant, updateTenantSettings, fetchAllOrganizations, fetchGlobalStatuses, addGlobalStatus, toggleTenantSuspension, impersonateTenant, fetchAllAnnouncements, createAnnouncement, toggleAnnouncement, fetchRecentSystemActivity, deleteTenantLeadsByStatus } from "@/app/actions/super-admin"
@@ -82,6 +82,7 @@ export default function SuperAdminConsole() {
     { id: "properties", name: "Property Management", icon: Building2 },
     { id: "site_visits", name: "Site Visits", icon: MapPin },
     { id: "real_estate", name: "Real Estate Tools", icon: Building2 },
+    { id: "cloudconnect_telephony", name: "CloudConnect Telephony", icon: Phone },
   ]
 
   const openSettings = (org: any) => {

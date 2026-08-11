@@ -32,10 +32,10 @@ export default async function TelecallerLayout({
     redirect("/auth/login")
   }
 
-  // Check if tenant has CloudConnect enabled
-  const { data: userData } = await supabase.from('users').select('tenant_id').eq('id', user.id).single()
+  // Check if tenant has CloudConnect enabled AND the agent has it enabled
+  const { data: userData } = await supabase.from('users').select('tenant_id, cloudconnect_enabled').eq('id', user.id).single()
   let isCloudConnectEnabled = false
-  if (userData?.tenant_id) {
+  if (userData?.tenant_id && userData?.cloudconnect_enabled) {
     const { data: orgData } = await supabase.from('organizations').select('enabled_modules').eq('id', userData.tenant_id).single()
     if (orgData?.enabled_modules && orgData.enabled_modules.includes('cloudconnect_telephony')) {
       isCloudConnectEnabled = true
