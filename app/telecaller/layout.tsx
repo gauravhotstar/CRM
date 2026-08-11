@@ -11,6 +11,8 @@ import { Watermark } from "@/components/watermark"
 import { AgentStatusBar } from "@/components/telecaller/AgentStatusBar"
 import { GeofenceAccessGuard } from "@/components/telecaller/GeofenceAccessGuard"
 import { createClient } from "@/lib/supabase/server"
+import { CloudConnectSoftphone } from "@/components/telecaller/CloudConnectSoftphone"
+import { CallScreenPop } from "@/components/telecaller/CallScreenPop"
 
 // ✅ IMPORT THE THEME PROVIDER
 import { ThemeProvider } from "@/components/theme-provider"
@@ -30,6 +32,16 @@ export default async function TelecallerLayout({
     redirect("/auth/login")
   }
 
+  // Check if tenant has CloudConnect enabled
+  const { data: userData } = await supabase.from('users').select('tenant_id').eq('id', user.id).single()
+  let isCloudConnectEnabled = false
+  if (userData?.tenant_id) {
+    const { data: orgData } = await supabase.from('organizations').select('enabled_modules').eq('id', userData.tenant_id).single()
+    if (orgData?.enabled_modules && orgData.enabled_modules.includes('cloudconnect_telephony')) {
+      isCloudConnectEnabled = true
+    }
+  }
+
   return (
     // ✅ WRAP EVERYTHING IN THE THEME PROVIDER
     <ThemeProvider
@@ -44,6 +56,9 @@ export default async function TelecallerLayout({
           
           <DailyWelcomeModal />
           <GlobalAutoDialer />
+          
+          {user && isCloudConnectEnabled && <CloudConnectSoftphone agentId={user.id} />}
+          {user && isCloudConnectEnabled && <CallScreenPop agentId={user.id} />}
           
           {/* ✅ Added dark:bg-gray-900 so dark mode actually changes the background */}
           <div className="flex h-screen bg-gray-50 dark:bg-slate-950">

@@ -19,8 +19,9 @@ import Link from "next/link"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 
-// Import the Server Action for C2C
-import { initiateC2CCall } from "@/app/actions/c2c-dialer" 
+import { initiateCloudConnectCall } from "@/app/actions/cloudconnect" 
+import { initiateC2CCall } from "@/app/actions/c2c-dialer"
+import { useTenant } from "@/context/tenant-provider"
 
 interface Lead {
   id: string
@@ -60,6 +61,7 @@ export function TelecallerLeadsTable({
   const searchParams = useSearchParams()
   const supabase = createClient()
   const [isPending, startTransition] = useTransition()
+  const org = useTenant()
 
   // State
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
@@ -119,18 +121,39 @@ export function TelecallerLeadsTable({
       setIsDialingC2C(leadId); // Show loading spinner
       
       try {
-          toast.info("Initiating cloud call...", { description: "Please wait for your phone to ring." });
+          const isCloudConnectEnabled = org?.enabled_modules?.includes('cloudconnect_telephony');
           
-          const result = await initiateC2CCall(leadId, customerPhone);
-          
-          if (result.success) {
-              toast.success(result.message);
-              // Open the status popup immediately since the call is connecting!
-              setSelectedLead(lead);
-              setIsCallInitiated(true);
-              setIsStatusDialogOpen(true);
+          if (isCloudConnectEnabled) {
+              toast.info("Initiating cloud call...", { description: "Please wait for your phone to ring." });
+              
+              const { data: { user } } = await supabase.auth.getUser();
+              if (!user) throw new Error("Agent session not found. Please log in.");
+              
+              const sessionId = localStorage.getItem("cc_session_id");
+              if (!sessionId) throw new Error("Softphone not initialized. Ensure the dialer is connected.");
+
+              const result = await initiateCloudConnectCall(customerPhone, user.id, sessionId);
+              
+              if (result.success) {
+                  toast.success(result.message);
+                  setSelectedLead(lead);
+                  setIsCallInitiated(true);
+                  setIsStatusDialogOpen(true);
+              } else {
+                  toast.error(result.error || "Failed to initiate call");
+              }
           } else {
-              toast.error(result.error || "Failed to initiate call");
+              toast.info("Initiating call...", { description: "Dialing through legacy system..." });
+              const result = await initiateC2CCall(leadId, customerPhone);
+              
+              if (result.success) {
+                  toast.success("Call Successful", { description: "Your phone should be ringing now!" });
+                  setSelectedLead(lead);
+                  setIsCallInitiated(true);
+                  setIsStatusDialogOpen(true);
+              } else {
+                  toast.error("Call Failed", { description: result.error || "Could not connect call." });
+              }
           }
       } catch (error: any) {
           toast.error("Call failed", { description: error.message });

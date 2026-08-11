@@ -25,7 +25,9 @@ import { FollowUpsList } from "@/components/follow-ups-list"
 import { WhatsAppChat } from "@/components/WhatsAppChat" 
 import { LiveScriptCard } from "@/components/telecaller/LiveScriptCard"
 import { ManagerEscalationButton } from "@/components/telecaller/ManagerEscalationButton"
+import { initiateCloudConnectCall } from "@/app/actions/cloudconnect"
 import { initiateC2CCall } from "@/app/actions/c2c-dialer"
+import { useTenant } from "@/context/tenant-provider"
 
 // ✅ IMPORT THE LEAD STATUS UPDATER
 import { LeadStatusUpdater } from "@/components/lead-status-updater"
@@ -209,8 +211,9 @@ const LeadTransferModule = ({ lead, tenantId, onTransferSuccess }: LeadTransferM
 };
 
 // --- MAIN PAGE COMPONENT ---
-export default function LeadDetailPage({ params }: { params: { id: string } }) {
+export default function LeadDetailsPage({ params }: { params: { id: string } }) {
     const router = useRouter()
+    const org = useTenant()
     const leadId = params.id
     const supabase = createClient()
     const { toast } = useToast();
@@ -233,15 +236,38 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
     const handleC2CDial = useCallback(async () => {
         if (!lead || isDialing) return;
         setIsDialing(true);
-        toast({ title: "C2C Call Triggered", description: "Dialing through Fonada OBD..." });
-        const res = await initiateC2CCall(lead.id, lead.phone);
-        setIsDialing(false);
-        if (res.success) {
-            toast({ title: "Call Successful", description: "Your phone should be ringing now!" });
-        } else {
-            toast({ title: "Call Failed", description: res.error || "Could not connect call.", variant: "destructive" });
+        
+        const isCloudConnectEnabled = org?.enabled_modules?.includes('cloudconnect_telephony');
+        
+        try {
+            if (isCloudConnectEnabled) {
+                toast({ title: "C2C Call Triggered", description: "Dialing through CloudConnect..." });
+                
+                const sessionId = localStorage.getItem("cc_session_id");
+                if (!sessionId) throw new Error("Softphone not initialized. Ensure the dialer is connected.");
+                
+                const res = await initiateCloudConnectCall(lead.phone, agentId, sessionId);
+                if (res.success) {
+                    toast({ title: "Call Successful", description: "Your phone should be ringing now!" });
+                } else {
+                    toast({ title: "Call Failed", description: res.error || "Could not connect call.", variant: "destructive" });
+                }
+            } else {
+                toast({ title: "C2C Call Triggered", description: "Dialing through legacy system..." });
+                
+                const res = await initiateC2CCall(lead.id, lead.phone);
+                if (res.success) {
+                    toast({ title: "Call Successful", description: "Your phone should be ringing now!" });
+                } else {
+                    toast({ title: "Call Failed", description: res.error || "Could not connect call.", variant: "destructive" });
+                }
+            }
+        } catch (error: any) {
+            toast({ title: "Call Failed", description: error.message, variant: "destructive" });
+        } finally {
+            setIsDialing(false);
         }
-    }, [lead, isDialing, toast]);
+    }, [lead, isDialing, toast, agentId, org]);
 
     const handleUpdateDetails = useCallback(async () => {
         if (!editableLeadData.id) return;
