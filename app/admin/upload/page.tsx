@@ -254,6 +254,7 @@ export default function UploadPage() {
                         phone: row.phone,
                         name: row.name || 'Unknown',
                         reason: 'Duplicate in CSV file',
+                        agent: '-',
                         _originalIndex: idx + 2
                     });
                     return acc;
@@ -314,10 +315,12 @@ export default function UploadPage() {
                     
                     if (existingStatus && skipStatuses.includes(existingStatus)) {
                         skipCount++
+                        const agentName = telecallers.find(t => t.id === existingLead.assigned_to)?.full_name || 'Unassigned';
                         tempSkippedRows.push({
                             phone: row.phone,
                             name: row.name || existingLead.name || 'Unknown',
                             reason: `Existing Lead (${existingStatus})`,
+                            agent: agentName,
                             _originalIndex: row._originalIndex || '-'
                         });
                     } else {
@@ -704,10 +707,10 @@ export default function UploadPage() {
 
   const downloadSkippedCSV = () => {
     if (skippedRows.length === 0) return;
-    const headers = ["Row", "Name", "Phone", "Reason"];
+    const headers = ["Row", "Name", "Phone", "Reason", "Assigned Agent"];
     const csvContent = [
       headers.join(","),
-      ...skippedRows.map(row => `${row._originalIndex || '-'},"${(row.name || '').replace(/"/g, '""')}","${row.phone || ''}","${(row.reason || '').replace(/"/g, '""')}"`)
+      ...skippedRows.map(row => `${row._originalIndex || '-'},"${(row.name || '').replace(/"/g, '""')}","${row.phone || ''}","${(row.reason || '').replace(/"/g, '""')}","${(row.agent || '').replace(/"/g, '""')}"`)
     ].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
@@ -1215,7 +1218,8 @@ export default function UploadPage() {
                             return (
                               String(row.phone || "").toLowerCase().includes(q) ||
                               String(row.name || "").toLowerCase().includes(q) ||
-                              String(row.reason || "").toLowerCase().includes(q)
+                              String(row.reason || "").toLowerCase().includes(q) ||
+                              String(row.agent || "").toLowerCase().includes(q)
                             );
                           })
                           .map((row, idx) => (
@@ -1233,6 +1237,7 @@ export default function UploadPage() {
                                   </span>
                                   <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                                     {row.name !== 'Unknown' ? row.name : 'Unnamed Lead'}
+                                    {row.agent && row.agent !== '-' ? ` • Agent: ${row.agent}` : ''}
                                   </span>
                                 </div>
                               </div>
@@ -1263,7 +1268,8 @@ export default function UploadPage() {
                           return (
                             String(row.phone || "").toLowerCase().includes(q) ||
                             String(row.name || "").toLowerCase().includes(q) ||
-                            String(row.reason || "").toLowerCase().includes(q)
+                            String(row.reason || "").toLowerCase().includes(q) ||
+                            String(row.agent || "").toLowerCase().includes(q)
                           );
                         }).length === 0 && (
                           <div className="text-center py-8 text-xs font-semibold text-slate-400 dark:text-slate-500">
