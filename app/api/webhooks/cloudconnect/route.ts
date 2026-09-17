@@ -22,23 +22,56 @@ async function handleWebhook(req: Request) {
   try {
     const url = new URL(req.url);
     const searchParams = url.searchParams;
+
+    let bodyData: any = {};
+    if (req.method === 'POST') {
+      const contentType = req.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        try {
+          bodyData = await req.json();
+        } catch (e) {
+          // ignore
+        }
+      } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+        try {
+          const formData = await req.formData();
+          formData.forEach((value, key) => {
+            bodyData[key] = value.toString();
+          });
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    const getParam = (key: string) => searchParams.get(key) || bodyData[key] || '';
     
     // 0. API Key Verification
-    const expectedApiKey = process.env.CLOUDCONNECT_WEBHOOK_SECRET || 'your-default-secure-api-key';
-    const providedApiKey = searchParams.get('api_key') || req.headers.get('x-api-key') || req.headers.get('authorization')?.replace('Bearer ', '');
+    const expectedApiKey = process.env.CLOUDCONNECT_WEBHOOK_SECRET || 'HANVA_OZT_7X9Q2P4L';
+    const providedApiKey = getParam('api_key') || req.headers.get('x-api-key') || req.headers.get('authorization')?.replace('Bearer ', '');
 
     if (providedApiKey !== expectedApiKey) {
         return NextResponse.json({ error: 'Unauthorized: Invalid API Key' }, { status: 401 });
     }
+
+    // Ping / Verification check (e.g. if testing from Postman or webhook setup without call details)
+    const hasCallData = getParam('uuid') || getParam('CallUUID') || getParam('call_uuid') || getParam('caller_number') || getParam('CustomerNumber') || getParam('cid');
+    if (!hasCallData) {
+        return NextResponse.json({ 
+            success: true, 
+            message: 'API key verified successfully. Webhook endpoint is active and ready to receive call events.' 
+        });
+    }
     
-    // Parse Payload (CloudConnect usually sends via Query Params for Webhooks)
-    const uuid = searchParams.get('uuid') || '';
-    const extensionNumber = searchParams.get('extension_number') || searchParams.get('agent_id') || '';
-    const callerNumber = searchParams.get('caller_number') || '';
-    const callStatus = searchParams.get('call_status') || ''; // 'Ring', 'Answered', 'Hangup'
-    const callDirection = searchParams.get('call_direction') || ''; // 'inbound', 'outbound'
-    const callDuration = searchParams.get('call_duration') || '0';
-    const dtmfInput = searchParams.get('dtmf_input') || searchParams.get('digit') || '';
+    // Parse Payload (Supports query params, JSON body, or form data)
+    const uuid = getParam('uuid') || getParam('CallUUID') || getParam('call_uuid') || '';
+    const extensionNumber = getParam('extension_number') || getParam('agent_id') || getParam('AgentID') || getParam('AgentPhoneNumber') || '';
+    const callerNumber = getParam('caller_number') || getParam('CustomerNumber') || getParam('caller_id') || getParam('cid') || getParam('PhoneNumber') || '';
+    const callStatus = getParam('call_status') || getParam('Status') || getParam('status') || getParam('DialStatus') || ''; // 'Ring', 'Answered', 'Hangup'
+    const callDirection = getParam('call_direction') || getParam('Direction') || getParam('direction') || 'inbound';
+    const callDuration = getParam('call_duration') || getParam('Duration') || getParam('duration') || '0';
+    const dtmfInput = getParam('dtmf_input') || getParam('digit') || getParam('AudioInput') || getParam('Input') || '';
+    const recordingUrl = getParam('recording_url') || getParam('AudioFile') || getParam('RecordingUrl') || '';
 
     if (!uuid || !callerNumber) {
         return NextResponse.json({ error: 'Missing required parameters (uuid, caller_number)' }, { status: 400 });
@@ -94,6 +127,11 @@ async function handleWebhook(req: Request) {
             duration_seconds: parseInt(callDuration, 10) || 0,
             notes: `CloudConnect Call (${callStatus}). Ext: ${extensionNumber}`
         };
+
+        if (recordingUrl) {
+            logData.recording_url = recordingUrl;
+            logData.notes += ` | Recording: ${recordingUrl}`;
+        }
 
         if (dtmfInput) {
             logData.notes += ` | DTMF Input: ${dtmfInput}`;

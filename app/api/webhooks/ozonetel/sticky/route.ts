@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Initialize Supabase Admin Client to bypass RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// Helper to lazy-load the Supabase Admin Client to bypass RLS for webhooks
+const getSupabaseAdmin = () => {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  )
+}
 
 export async function GET(req: Request) {
     return handleStickyRouting(req);
@@ -19,22 +21,49 @@ async function handleStickyRouting(req: Request) {
     try {
         const url = new URL(req.url);
         const searchParams = url.searchParams;
+
+        let bodyData: any = {};
+        if (req.method === 'POST') {
+            const contentType = req.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                try {
+                    bodyData = await req.json();
+                } catch (e) {
+                    // ignore
+                }
+            } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+                try {
+                    const formData = await req.formData();
+                    formData.forEach((value, key) => {
+                        bodyData[key] = value.toString();
+                    });
+                } catch (e) {
+                    // ignore
+                }
+            }
+        }
+
+        const getParam = (key: string) => searchParams.get(key) || bodyData[key] || '';
         
         // API Key Verification
         const expectedApiKey = process.env.CLOUDCONNECT_WEBHOOK_SECRET || 'HANVA_OZT_7X9Q2P4L';
-        const providedApiKey = searchParams.get('api_key') || req.headers.get('x-api-key') || req.headers.get('authorization')?.replace('Bearer ', '');
+        const providedApiKey = getParam('api_key') || req.headers.get('x-api-key') || req.headers.get('authorization')?.replace('Bearer ', '');
 
         if (providedApiKey !== expectedApiKey) {
             return NextResponse.json({ error: 'Unauthorized: Invalid API Key' }, { status: 401 });
         }
 
-        // Ozonetel will pass the customer's phone number, e.g., ?caller_number=9876543210
-        const callerNumber = searchParams.get('caller_number') || searchParams.get('cid') || '';
+        // Verification ping (e.g. testing with only api_key in Postman)
+        const callerNumber = getParam('caller_number') || getParam('cid') || getParam('CustomerNumber') || getParam('phone') || getParam('From') || '';
         if (!callerNumber) {
-            return NextResponse.json({ error: 'Missing caller_number parameter' }, { status: 400 });
+            return NextResponse.json({ 
+                success: true, 
+                message: 'API key verified successfully. Sticky Agent endpoint is active.' 
+            });
         }
 
         const cleanNumber = callerNumber.replace(/^\+?\d{1,3}/, '').slice(-10);
+        const supabaseAdmin = getSupabaseAdmin();
 
         // 1. Look up the lead to find the assigned agent
         const { data: leads } = await supabaseAdmin
