@@ -35,7 +35,8 @@ export default function WorkspaceSettingsPage() {
     cron_daily_report: true,
     cron_kyc: true,
     cron_sla: true,
-    cron_smart_notifications: true
+    cron_smart_notifications: true,
+    ivr_digit_auto_assign: true,
   })
 
   // Fetch existing settings on load
@@ -62,7 +63,8 @@ export default function WorkspaceSettingsPage() {
             cron_daily_report: data.cron_daily_report ?? true,
             cron_kyc: data.cron_kyc ?? true,
             cron_sla: data.cron_sla ?? true,
-            cron_smart_notifications: data.cron_smart_notifications ?? true
+            cron_smart_notifications: data.cron_smart_notifications ?? true,
+            ivr_digit_auto_assign: data.ivr_digit_auto_assign ?? true,
           })
         }
       } catch (err: any) {
@@ -255,6 +257,15 @@ export default function WorkspaceSettingsPage() {
                   <p className="text-sm text-slate-500">Automatically ends the shift of any agent who forgets to check out at midnight.</p>
                 </div>
                 <Switch checked={formData.cron_auto_checkout} onCheckedChange={() => handleCronToggle('cron_auto_checkout')} />
+              </div>
+
+              {/* IVR Digit Auto-Assign */}
+              <div className="flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50 transition-colors">
+                <div className="space-y-0.5">
+                  <Label className="text-base font-semibold text-slate-800">IVR Digit-Press Auto Assign</Label>
+                  <p className="text-sm text-slate-500">When a customer presses any digit on the IVR call, instantly create a lead and assign it to the most available logged-in agent.</p>
+                </div>
+                <Switch checked={formData.ivr_digit_auto_assign} onCheckedChange={() => handleCronToggle('ivr_digit_auto_assign')} />
               </div>
 
             </div>

@@ -124,7 +124,81 @@ export async function POST(request: NextRequest) {
     let dbPhone = customerPhone.replace(/^\+?91/, '');
     if (dbPhone.length > 10) dbPhone = dbPhone.slice(-10);
 
-    // 🔴 SEARCH FOR LEAD ONLY WITHIN THIS TENANT
+    // ====================================================================
+    // 🆕 IVR DIGIT-PRESS AUTO ASSIGN SYSTEM
+    // If customer pressed ANY digit, immediately create/assign lead to the
+    // most available checked-in agent. Can be paused from Admin > Settings.
+    // ====================================================================
+    if (digitsPressed !== null && digitsPressed !== undefined && String(digitsPressed).trim() !== '') {
+        console.log(`🔢 [IVR DIGIT] Customer pressed: ${digitsPressed} for phone: ${dbPhone}`);
+
+        const { data: tenantCfg } = await supabaseAdmin
+            .from('tenant_settings')
+            .select('ivr_digit_auto_assign')
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+
+        const isEnabled = tenantCfg?.ivr_digit_auto_assign !== false; // ON by default
+
+        if (isEnabled) {
+            const agentId = await getFairAssigneeId(tenantId);
+
+            const { data: existingLead } = await supabaseAdmin
+                .from('leads')
+                .select('id, notes, assigned_to, status')
+                .eq('tenant_id', tenantId)
+                .or(`phone.eq.${dbPhone},phone.eq.+91${dbPhone},phone.eq.91${dbPhone}`)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const digitNote = `📞 [IVR] Customer pressed digit "${digitsPressed}" on ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}. Campaign: ${campaignName}.`;
+
+            if (existingLead) {
+                const updatedNotes = existingLead.notes ? `${existingLead.notes}\n\n${digitNote}` : digitNote;
+                await supabaseAdmin.from('leads').update({
+                    assigned_to: agentId,
+                    status: 'new',
+                    notes: updatedNotes,
+                    last_contacted: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                }).eq('id', existingLead.id);
+                console.log(`♻️ [IVR DIGIT] Re-assigned existing lead ${existingLead.id} to agent ${agentId}`);
+            } else {
+                const autoName = getRandomIndianName();
+                await supabaseAdmin.from('leads').insert({
+                    tenant_id: tenantId,
+                    name: autoName,
+                    phone: dbPhone,
+                    status: 'new',
+                    source: 'ivr',
+                    notes: `🤖 [IVR Auto-Created]\n${digitNote}`,
+                    assigned_to: agentId,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                });
+                console.log(`✨ [IVR DIGIT] Created new lead for ${dbPhone} → agent ${agentId}`);
+            }
+
+            if (agentId) {
+                await supabaseAdmin.from('notifications').insert({
+                    user_id: agentId,
+                    tenant_id: tenantId,
+                    title: '📞 New IVR Lead Assigned',
+                    message: `A customer pressed digit "${digitsPressed}" on IVR. Phone: ${dbPhone}. Follow up now!`,
+                    read: false,
+                    created_at: new Date().toISOString(),
+                });
+            }
+
+            return NextResponse.json({ status: 'success', action: 'ivr_digit_lead_assigned', agent: agentId });
+        } else {
+            console.log(`⏸️ [IVR DIGIT] Auto-assign is PAUSED for tenant ${tenantId}. Continuing normal flow.`);
+        }
+    }
+    // ====================================================================
+
+    // 🔴 SEARCH FOR LEAD ONLY WITHIN THIS TENANT (original flow for no-digit calls)
     const { data: lead } = await supabaseAdmin
       .from("leads")
       .select("id, notes, status")

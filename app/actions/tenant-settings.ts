@@ -69,7 +69,8 @@ export async function getWorkspaceSettings() {
             .select(`
                 fonada_client_id, fonada_secret, whatsapp_api_key, whatsapp_ai_agent_enabled,
                 cron_auto_checkout, cron_auto_refill, cron_daily_report, 
-                cron_kyc, cron_sla, cron_smart_notifications, unicorn_api_key
+                cron_kyc, cron_sla, cron_smart_notifications, unicorn_api_key,
+                ivr_digit_auto_assign
             `)
             .eq('tenant_id', tenantId)
             .maybeSingle();
@@ -106,6 +107,7 @@ export async function updateWorkspaceSettings(formData: {
     cron_sla: boolean;
     cron_smart_notifications: boolean;
     unicorn_api_key: string;
+    ivr_digit_auto_assign: boolean;
 }) {
     try {
         const supabase = await createClient()
@@ -131,6 +133,7 @@ export async function updateWorkspaceSettings(formData: {
             cron_sla: Boolean(formData.cron_sla),
             cron_smart_notifications: Boolean(formData.cron_smart_notifications),
             unicorn_api_key: formData.unicorn_api_key || "",
+            ivr_digit_auto_assign: Boolean(formData.ivr_digit_auto_assign),
             updated_at: new Date().toISOString()
         };
 
