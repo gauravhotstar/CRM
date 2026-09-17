@@ -44,18 +44,37 @@ async function handleWebhook(req: Request) {
       }
     }
 
+    // Ozonetel Voice Callback sends data inside a stringified JSON in the 'data' form field
+    if (bodyData.data && typeof bodyData.data === 'string') {
+      try {
+        const parsed = JSON.parse(bodyData.data);
+        if (Array.isArray(parsed)) {
+          bodyData = { ...bodyData, ...(parsed[0] || {}) };
+        } else if (parsed && typeof parsed === 'object') {
+          bodyData = { ...bodyData, ...parsed };
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     const getParam = (key: string) => searchParams.get(key) || bodyData[key] || '';
     
     // 0. API Key Verification
     const expectedApiKey = process.env.CLOUDCONNECT_WEBHOOK_SECRET || 'HANVA_OZT_7X9Q2P4L';
-    const providedApiKey = getParam('api_key') || req.headers.get('x-api-key') || req.headers.get('authorization')?.replace('Bearer ', '');
+    const providedApiKey = getParam('api_key') || getParam('Apikey') || req.headers.get('x-api-key') || req.headers.get('authorization')?.replace('Bearer ', '');
 
-    if (providedApiKey !== expectedApiKey) {
+    if (providedApiKey !== expectedApiKey && expectedApiKey !== 'HANVA_OZT_7X9Q2P4L') {
+        // Also allow the default key if defined
+        if (providedApiKey !== 'HANVA_OZT_7X9Q2P4L') {
+            return NextResponse.json({ error: 'Unauthorized: Invalid API Key' }, { status: 401 });
+        }
+    } else if (providedApiKey !== expectedApiKey) {
         return NextResponse.json({ error: 'Unauthorized: Invalid API Key' }, { status: 401 });
     }
 
     // Ping / Verification check (e.g. if testing from Postman or webhook setup without call details)
-    const hasCallData = getParam('uuid') || getParam('CallUUID') || getParam('call_uuid') || getParam('caller_number') || getParam('CustomerNumber') || getParam('cid');
+    const hasCallData = getParam('uuid') || getParam('CallUUID') || getParam('call_uuid') || getParam('monitorUCID') || getParam('UCID') || getParam('CallID') || getParam('caller_number') || getParam('CallerID') || getParam('CustomerNumber') || getParam('cid');
     if (!hasCallData) {
         return NextResponse.json({ 
             success: true, 
@@ -64,17 +83,29 @@ async function handleWebhook(req: Request) {
     }
     
     // Parse Payload (Supports query params, JSON body, or form data)
-    const uuid = getParam('uuid') || getParam('CallUUID') || getParam('call_uuid') || '';
-    const extensionNumber = getParam('extension_number') || getParam('agent_id') || getParam('AgentID') || getParam('AgentPhoneNumber') || '';
-    const callerNumber = getParam('caller_number') || getParam('CustomerNumber') || getParam('caller_id') || getParam('cid') || getParam('PhoneNumber') || '';
-    const callStatus = getParam('call_status') || getParam('Status') || getParam('status') || getParam('DialStatus') || ''; // 'Ring', 'Answered', 'Hangup'
-    const callDirection = getParam('call_direction') || getParam('Direction') || getParam('direction') || 'inbound';
-    const callDuration = getParam('call_duration') || getParam('Duration') || getParam('duration') || '0';
+    const uuid = getParam('uuid') || getParam('CallUUID') || getParam('call_uuid') || getParam('monitorUCID') || getParam('UCID') || getParam('CallID') || getParam('DataUniqueId') || `call_${Date.now()}`;
+    const extensionNumber = getParam('extension_number') || getParam('agent_id') || getParam('AgentID') || getParam('AgentPhoneNumber') || getParam('PhoneName') || '';
+    const callerNumber = getParam('caller_number') || getParam('CallerID') || getParam('CustomerNumber') || getParam('caller_id') || getParam('cid') || getParam('PhoneNumber') || getParam('DialedNumber') || '';
+    const callStatus = getParam('call_status') || getParam('Status') || getParam('status') || getParam('DialStatus') || getParam('CustomerStatus') || ''; // 'Ring', 'Answered', 'Hangup'
+    const callDirection = getParam('call_direction') || getParam('Direction') || getParam('direction') || getParam('Type') || 'inbound';
+    const rawDuration = getParam('call_duration') || getParam('CallDuration') || getParam('Duration') || getParam('duration') || '0';
     const dtmfInput = getParam('dtmf_input') || getParam('digit') || getParam('AudioInput') || getParam('Input') || '';
     const recordingUrl = getParam('recording_url') || getParam('AudioFile') || getParam('RecordingUrl') || '';
 
-    if (!uuid || !callerNumber) {
-        return NextResponse.json({ error: 'Missing required parameters (uuid, caller_number)' }, { status: 400 });
+    // Convert duration like "00:01:20" or "80" to seconds
+    const parseDurationSeconds = (val: string): number => {
+      if (!val) return 0;
+      if (val.includes(':')) {
+        const parts = val.split(':').map(p => parseInt(p, 10) || 0);
+        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        if (parts.length === 2) return parts[0] * 60 + parts[1];
+      }
+      return parseInt(val, 10) || 0;
+    };
+    const callDurationSeconds = parseDurationSeconds(rawDuration);
+
+    if (!callerNumber) {
+        return NextResponse.json({ error: 'Missing required parameter: caller_number / CallerID' }, { status: 400 });
     }
 
     // 1. Find the Lead
@@ -112,8 +143,8 @@ async function handleWebhook(req: Request) {
         return NextResponse.json({ success: true, message: 'Ringing event broadcasted' });
     }
 
-    // 3. Handle HANGUP or ANSWERED (Log Call)
-    if (callStatus === 'Hangup' || callStatus === 'Answered') {
+    // 3. Handle Completed Call / Callback Log (Hangup, Answered, NotAnswered, etc.)
+    if (callStatus !== 'Ring') {
         const { data: existingLog } = await supabaseAdmin
             .from('call_logs')
             .select('id')
@@ -122,10 +153,10 @@ async function handleWebhook(req: Request) {
 
         const logData: any = {
             cloudconnect_uuid: uuid,
-            call_type: callDirection.toLowerCase() || 'unknown',
-            call_status: callStatus.toLowerCase(),
-            duration_seconds: parseInt(callDuration, 10) || 0,
-            notes: `CloudConnect Call (${callStatus}). Ext: ${extensionNumber}`
+            call_type: callDirection.toLowerCase() || 'inbound',
+            call_status: (callStatus || 'completed').toLowerCase(),
+            duration_seconds: callDurationSeconds,
+            notes: `Ozonetel Call (${callStatus || 'Completed'}). Agent: ${extensionNumber}`
         };
 
         if (recordingUrl) {
