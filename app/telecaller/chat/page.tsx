@@ -129,18 +129,25 @@ export default function AdminWhatsAppPanel() {
         const newMsg = payload.new as ChatMessage;
         const isLookingAtDifferentTab = document.hidden;
 
-        setSelectedLead((currentSelectedLead) => {
-             const isLookingAtDifferentChat = currentSelectedLead?.id !== newMsg.lead_id;
-             
-             if (isLookingAtDifferentTab || isLookingAtDifferentChat) {
-                playNotificationSound();
-    
-                showLocalNotification("New WhatsApp Message", {
-                   body: newMsg.content ? newMsg.content.substring(0, 50) + "..." : "You received a new message.",
-                   icon: "/favicon.ico"
-                });
-             }
-             return currentSelectedLead; 
+        setLeads((currentLeads) => {
+          const belongsToAgent = currentLeads.find(l => l.id === newMsg.lead_id);
+          
+          if (belongsToAgent) {
+            setSelectedLead((currentSelectedLead) => {
+                 const isLookingAtDifferentChat = currentSelectedLead?.id !== newMsg.lead_id;
+                 
+                 if (isLookingAtDifferentTab || isLookingAtDifferentChat) {
+                    playNotificationSound();
+        
+                    showLocalNotification(`Message from ${belongsToAgent.name}`, {
+                       body: newMsg.content ? newMsg.content.substring(0, 50) + "..." : "You received a new message.",
+                       icon: "/favicon.ico"
+                    });
+                 }
+                 return currentSelectedLead; 
+            });
+          }
+          return currentLeads;
         });
 
       }).subscribe()
