@@ -116,11 +116,57 @@ async function handleWebhook(req: Request) {
     
     const { data: leads } = await supabaseAdmin
         .from('leads')
-        .select('id, name, company, phone, status')
+        .select('id, name, company, phone, status, tenant_id')
         .ilike('phone', `%${cleanNumber}%`)
         .limit(1);
 
-    const lead = leads?.[0];
+    let lead = leads?.[0];
+
+    // If no lead exists but we got DTMF (e.g. Outbound IVR), create one & assign to available agent
+    if (!lead && dtmfInput) {
+        // Find an active/checked-in agent
+        const maxShiftStart = new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString();
+        const { data: attendanceData } = await supabaseAdmin
+            .from("attendance")
+            .select("user_id, tenant_id")
+            .gte("check_in", maxShiftStart)
+            .is("check_out", null);
+            
+        const activeAgent = attendanceData && attendanceData.length > 0 
+            ? attendanceData[Math.floor(Math.random() * attendanceData.length)] 
+            : null;
+            
+        const newLeadStatus = (dtmfInput === '1' || dtmfInput === '2') ? 'Interested' : (dtmfInput === '3' ? 'Not Interested' : 'New');
+        
+        const newLeadData: any = {
+            name: `New Lead (IVR ${callerNumber})`,
+            phone: callerNumber,
+            status: newLeadStatus,
+        };
+
+        if (activeAgent) {
+            newLeadData.assigned_to = activeAgent.user_id;
+            newLeadData.tenant_id = activeAgent.tenant_id;
+        } else {
+            // Fallback: Just grab any tenant to satisfy RLS/foreign keys if needed
+            const { data: fallbackTenant } = await supabaseAdmin.from('tenant_settings').select('tenant_id').limit(1).single();
+            if (fallbackTenant) {
+                newLeadData.tenant_id = fallbackTenant.tenant_id;
+            }
+        }
+
+        const { data: createdLead, error: createError } = await supabaseAdmin
+            .from('leads')
+            .insert([newLeadData])
+            .select('id, name, company, phone, status, tenant_id')
+            .single();
+
+        if (createdLead) {
+            lead = createdLead;
+        } else {
+            console.error("Failed to create new DTMF lead:", createError);
+        }
+    }
 
     // 2. Handle RINGING (Screen Pop)
     if (callStatus === 'Ring') {
