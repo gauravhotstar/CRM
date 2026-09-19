@@ -45,6 +45,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils"
 import { useTenant, useMasterStatuses } from "@/context/tenant-provider"
 import { MASTER_STATUSES, DEFAULT_WORKFLOW_TRIGGERS } from "@/lib/lead-statuses"
+import { LeadAuditHistory } from "@/components/lead-audit-history"
 
 // --- TYPES ---
 interface EditLeadPageProps {
