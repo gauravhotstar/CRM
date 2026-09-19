@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils"
 import { useTenant, useMasterStatuses } from "@/context/tenant-provider"
 import { MASTER_STATUSES, DEFAULT_WORKFLOW_TRIGGERS } from "@/lib/lead-statuses"
 import { LeadAuditHistory } from "@/components/lead-audit-history"
+import { LeadDocuments } from "@/components/lead-documents"
 
 // --- TYPES ---
 interface EditLeadPageProps {
@@ -749,13 +750,8 @@ export default function EditLeadPage({ params }: EditLeadPageProps) {
                        Request KYC
                    </Button>
                </CardHeader>
-               <CardContent className="pt-6">
-                   <div className="flex items-center justify-center p-12 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-                       <div className="text-center">
-                           <p className="text-slate-500 mb-2 font-medium">No documents uploaded yet.</p>
-                           <p className="text-xs text-slate-400">Request documents from the client to get started.</p>
-                       </div>
-                   </div>
+               <CardContent className="p-0">
+                   <LeadDocuments leadId={lead.id} tenantId={lead.tenant_id} />
                </CardContent>
             </Card>
             <KycRequestDialog isOpen={isKycDialogOpen} onClose={() => setIsKycDialogOpen(false)} leadName={lead.name} leadId={lead.id} tenantId={lead.tenant_id} leadPhone={lead.phone} />
