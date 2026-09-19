@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@supabase/supabase-js"
+import { revalidatePath } from "next/cache"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,14 +28,19 @@ export async function uploadKycDocument(formData: FormData, tenantId: string, le
     const publicUrlData = supabaseAdmin.storage.from('kyc_documents').getPublicUrl(fileName);
     const fileUrl = publicUrlData.data.publicUrl;
 
+    const { data: leadData } = await supabaseAdmin.from('leads').select('phone').eq('id', leadId).single();
+
     const { error: chatError } = await supabaseAdmin.from('chat_messages').insert({
         tenant_id: tenantId,
         lead_id: leadId,
+        phone_number: leadData?.phone || '',
         direction: 'inbound',
         message_type: 'document',
         content: `📁 *KYC Document Uploaded via Magic Link (${docType}):*\n${fileUrl}`,
         status: 'received'
     });
+    
+    if (chatError) console.error("Chat insert error:", chatError);
     
     // Also update lead status to show new message
     await supabaseAdmin.from("leads").update({ 
@@ -45,6 +51,12 @@ export async function uploadKycDocument(formData: FormData, tenantId: string, le
 
     // Try to trigger unread counter
     await supabaseAdmin.rpc('increment_unread_count', { row_id: leadId });
+    
+    // Revalidate paths to update UI instantly
+    revalidatePath(`/admin/leads/${leadId}`);
+    revalidatePath(`/telecaller/leads/${leadId}`);
+    revalidatePath(`/admin/whatsapp`);
+    revalidatePath(`/telecaller/chat`);
 
     return { success: true, url: fileUrl };
   } catch (error: any) {
