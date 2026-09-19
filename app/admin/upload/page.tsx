@@ -388,7 +388,9 @@ export default function UploadPage() {
                                 assigned_at: wasAssignedInThisUpload && assigneeId ? new Date().toISOString() : undefined,
                                 status: wasAssignedInThisUpload ? 'new' : undefined,
                                 priority: finalPriority,
-                                updated_at: new Date().toISOString()
+                                updated_at: new Date().toISOString(),
+                                created_at: wasAssignedInThisUpload ? new Date().toISOString() : undefined,
+                                last_contacted: wasAssignedInThisUpload ? null : undefined
                             };
 
                             // Clean undefined keys from payload
