@@ -9,7 +9,21 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 
-export function KycRequestDialog({ isOpen, onClose, leadName = "the client" }: { isOpen: boolean, onClose: () => void, leadName?: string }) {
+export function KycRequestDialog({ 
+  isOpen, 
+  onClose, 
+  leadName = "the client",
+  leadId,
+  tenantId,
+  leadPhone
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  leadName?: string,
+  leadId?: string,
+  tenantId?: string,
+  leadPhone?: string
+}) {
   const [copied, setCopied] = useState(false)
   const [magicLink, setMagicLink] = useState("")
   
@@ -22,8 +36,9 @@ export function KycRequestDialog({ isOpen, onClose, leadName = "the client" }: {
   })
 
   const handleGenerateLink = () => {
-    // Mock magic link generation based on selected docs
-    const link = `https://crm.example.com/kyc-upload/tk_9a8b7c6d5e4f?req=${Object.entries(docs).filter(([k, v]) => v).map(([k]) => k).join(',')}`
+    const payload = btoa(JSON.stringify({ leadId, tenantId }));
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://crm.hanva.in';
+    const link = `${baseUrl}/kyc-upload/${payload}?req=${Object.entries(docs).filter(([k, v]) => v).map(([k]) => k).join(',')}`
     setMagicLink(link)
   }
 

@@ -758,7 +758,7 @@ export default function EditLeadPage({ params }: EditLeadPageProps) {
                    </div>
                </CardContent>
             </Card>
-            <KycRequestDialog isOpen={isKycDialogOpen} onClose={() => setIsKycDialogOpen(false)} leadName={lead.name} />
+            <KycRequestDialog isOpen={isKycDialogOpen} onClose={() => setIsKycDialogOpen(false)} leadName={lead.name} leadId={lead.id} tenantId={lead.tenant_id} leadPhone={lead.phone} />
         </TabsContent>
 
         <TabsContent value="smart_matches">
