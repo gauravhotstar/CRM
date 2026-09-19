@@ -156,28 +156,28 @@ export async function POST(request: NextRequest) {
 
             if (existingLead) {
                 const updatedNotes = existingLead.notes ? `${existingLead.notes}\n\n${digitNote}` : digitNote;
-                await supabaseAdmin.from('leads').update({
+                const { error: updErr } = await supabaseAdmin.from('leads').update({
                     assigned_to: agentId,
                     status: 'new',
                     notes: updatedNotes,
-                    last_contacted: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
+                    last_contacted: new Date().toISOString()
                 }).eq('id', existingLead.id);
-                console.log(`♻️ [IVR DIGIT] Re-assigned existing lead ${existingLead.id} to agent ${agentId}`);
+                
+                if (updErr) console.error("🚨 [IVR DIGIT] Update Error:", updErr);
+                else console.log(`♻️ [IVR DIGIT] Re-assigned existing lead ${existingLead.id} to agent ${agentId}`);
             } else {
                 const autoName = getRandomIndianName();
-                await supabaseAdmin.from('leads').insert({
+                const { error: insErr } = await supabaseAdmin.from('leads').insert({
                     tenant_id: tenantId,
                     name: autoName,
                     phone: dbPhone,
                     status: 'new',
-                    source: 'ivr',
                     notes: `🤖 [IVR Auto-Created]\n${digitNote}`,
-                    assigned_to: agentId,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
+                    assigned_to: agentId
                 });
-                console.log(`✨ [IVR DIGIT] Created new lead for ${dbPhone} → agent ${agentId}`);
+                
+                if (insErr) console.error("🚨 [IVR DIGIT] Insert Error:", insErr);
+                else console.log(`✨ [IVR DIGIT] Created new lead for ${dbPhone} → agent ${agentId}`);
             }
 
             if (agentId) {
