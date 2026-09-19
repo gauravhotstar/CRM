@@ -1,26 +1,24 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getKycDocuments } from "@/app/actions/get-kyc-documents"
 import { FileText, Download, ExternalLink, Image as ImageIcon, File, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export function LeadDocuments({ leadId, tenantId }: { leadId: string, tenantId: string }) {
-    const supabase = createClient()
     const [files, setFiles] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
         const fetchDocs = async () => {
-            const { data, error } = await supabase.storage.from('kyc_documents').list(`${tenantId}/${leadId}`)
-            if (data) {
-                // Filter out empty folder placeholders
-                setFiles(data.filter(f => f.name !== '.emptyFolderPlaceholder' && f.id))
+            const res = await getKycDocuments(tenantId, leadId);
+            if (res.success) {
+                setFiles(res.data)
             }
             setLoading(false)
         }
         fetchDocs()
-    }, [leadId, tenantId, supabase])
+    }, [leadId, tenantId])
 
     if (loading) {
         return <div className="p-12 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
@@ -40,8 +38,7 @@ export function LeadDocuments({ leadId, tenantId }: { leadId: string, tenantId: 
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4">
             {files.map(file => {
-                const isImage = file.metadata?.mimetype?.startsWith('image/') || file.name.endsWith('.jpg') || file.name.endsWith('.png');
-                const fileUrl = supabase.storage.from('kyc_documents').getPublicUrl(`${tenantId}/${leadId}/${file.name}`).data.publicUrl;
+                const isImage = file.mimetype?.startsWith('image/') || file.name.endsWith('.jpg') || file.name.endsWith('.png');
                 
                 return (
                     <div key={file.id} className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center text-center hover:shadow-md transition-shadow bg-slate-50 dark:bg-slate-900/50">
@@ -52,10 +49,10 @@ export function LeadDocuments({ leadId, tenantId }: { leadId: string, tenantId: 
                             {file.name.replace(/^kyc_/, '').split('_')[0]}
                         </p>
                         <p className="text-xs text-slate-500 mb-4">
-                            {new Date(file.created_at).toLocaleDateString()} • {(file.metadata?.size / 1024).toFixed(1)} KB
+                            {new Date(file.created_at).toLocaleDateString()} • {(file.size / 1024).toFixed(1)} KB
                         </p>
                         <div className="flex gap-2 w-full mt-auto">
-                            <Button variant="outline" size="sm" className="w-full flex-1" onClick={() => window.open(fileUrl, '_blank')}>
+                            <Button variant="outline" size="sm" className="w-full flex-1" onClick={() => window.open(file.url, '_blank')}>
                                 <ExternalLink className="h-3 w-3 mr-1" /> View
                             </Button>
                         </div>
