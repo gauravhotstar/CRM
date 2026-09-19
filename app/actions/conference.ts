@@ -49,7 +49,6 @@ export async function initiateManagerConference(leadId: string, agentId: string,
     // 3. Prepare the Fonada Conference API Payload
     // ⚠️ NOTE: Replace 'apiUrl' with Fonada's exact Conference/Call Patching endpoint
     const apiUrl = "http://192.168.1.16:7992/fonada_conference_api.php"; 
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
     const formData = new FormData();
     formData.append("userid", fonadaUser);

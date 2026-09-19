@@ -42,7 +42,7 @@ export function useLeadAssignmentNotifications(userId?: string) {
     return () => {
       console.log("Cleaning up subscription channels")
       // Cleanup subscriptions when component unmounts
-      supabase.removeAllChannels()
+      leadAssignmentNotificationManager.teardownRealtimeSubscription()
     }
   }, [userId, supabase])
 }

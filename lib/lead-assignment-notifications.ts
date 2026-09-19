@@ -21,6 +21,7 @@ export class LeadAssignmentNotificationManager {
   private supabase = createClient()
   private assignmentQueue: any[] = []
   private batchTimeoutId: ReturnType<typeof setTimeout> | null = null
+  private activeChannel: any = null
 
   // Send notification when lead is assigned
   async notifyLeadAssignment(notification: LeadAssignmentNotification): Promise<void> {
@@ -285,6 +286,16 @@ export class LeadAssignmentNotificationManager {
           console.log("Successfully subscribed to lead assignments for user:", userId)
         }
       })
+      
+    this.activeChannel = channel;
+  }
+
+  teardownRealtimeSubscription(): void {
+    if (this.activeChannel) {
+      console.log("Tearing down lead assignment subscription");
+      this.supabase.removeChannel(this.activeChannel);
+      this.activeChannel = null;
+    }
   }
 
   // Handle real-time assignment notification with debouncing

@@ -48,7 +48,6 @@ async function getTenantWaCredentials(tenantId: string | null) {
 // Unified helper to send WhatsApp messages using Fonada SendMsgOld endpoint
 async function sendViaFonadaOldApi(creds: any, phone: string, text: string) {
   const apiUrl = "https://waba.fonada.com/api/SendMsgOld";
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
   const formData = new FormData();
   formData.append("userid", creds.fonadaUser);

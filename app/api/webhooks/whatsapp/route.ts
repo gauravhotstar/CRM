@@ -408,7 +408,6 @@ Communication Style:
 // =================================================================================
 async function sendFonadaMessage(mobile: string, text: string, userId: string, pass: string, waba: string, leadId: string, tenantId: string) {
   const apiUrl = "https://waba.fonada.com/api/SendMsgOld"; 
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
   let safePhone = mobile.replace(/^\+/, '');
   if (safePhone.length === 10) safePhone = `91${safePhone}`;

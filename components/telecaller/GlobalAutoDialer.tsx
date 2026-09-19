@@ -33,6 +33,8 @@ export function GlobalAutoDialer() {
     }
 
     useEffect(() => {
+        let channel: any = null;
+
         const initDialer = async () => {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
@@ -54,14 +56,17 @@ export function GlobalAutoDialer() {
 
             // 2. Listen for both status AND dialer_status changes
             const channelName = `auto_dialer_sync-${user.id}-${Math.random()}`;
-            const channel = supabase.channel(channelName)
+            channel = supabase.channel(channelName)
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` }, 
                 (payload: any) => handleDatabaseStatusChange(payload.new.current_status, payload.new.auto_dialer_status))
                 .subscribe()
-
-            return () => { supabase.removeChannel(channel) }
         }
+        
         initDialer()
+
+        return () => { 
+            if (channel) supabase.removeChannel(channel) 
+        }
     }, [supabase])
 
 
