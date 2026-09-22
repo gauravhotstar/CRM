@@ -9,6 +9,9 @@ const CC_BASE_URL = "https://crm5.cloud-connect.in/CCC_api/v1.4";
 
 export async function createAgentSession(agentId: string) {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
     const res = await fetch(`${CC_BASE_URL}/createSession`, {
       method: "POST",
       headers: {
@@ -19,7 +22,10 @@ export async function createAgentSession(agentId: string) {
         token: CC_API_TOKEN,
         tenant_id: CC_TENANT_ID,
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     const data = await res.json();
     if (data.code === 200 && data.status === "OK") {
@@ -35,6 +41,9 @@ export async function createAgentSession(agentId: string) {
 
 export async function initiateCloudConnectCall(customerPhone: string, agentId: string, sessionId: string) {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
     const res = await fetch(`${CC_BASE_URL}/clickToCallManual`, {
       method: "POST",
       headers: {
@@ -49,7 +58,10 @@ export async function initiateCloudConnectCall(customerPhone: string, agentId: s
         tenant_id: CC_TENANT_ID,
         token: CC_API_TOKEN,
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     const data = await res.json();
     if (data.code === 200 && data.status === "OK") {
