@@ -122,19 +122,41 @@ async function handleWebhook(req: Request) {
 
     let lead = leads?.[0];
 
-    // If no lead exists but we got DTMF (e.g. Outbound IVR), create one & assign to available agent
+    // If no lead exists but we got DTMF, create one & assign
     if (!lead && dtmfInput) {
-        // Find an active/checked-in agent
-        const maxShiftStart = new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString();
-        const { data: attendanceData } = await supabaseAdmin
-            .from("attendance")
-            .select("user_id, tenant_id")
-            .gte("check_in", maxShiftStart)
-            .is("check_out", null);
-            
-        const activeAgent = attendanceData && attendanceData.length > 0 
-            ? attendanceData[Math.floor(Math.random() * attendanceData.length)] 
-            : null;
+        let targetAgentId = null;
+        let targetTenantId = null;
+
+        // 1. Try to find the specific agent who was on the call (via extensionNumber/AgentPhoneNumber)
+        if (extensionNumber) {
+            const cleanExt = extensionNumber.replace(/^\+?\d{1,3}/, '').slice(-10);
+            const { data: matchingUsers } = await supabaseAdmin
+                .from('users')
+                .select('id, tenant_id, phone')
+                .ilike('phone', `%${cleanExt}%`)
+                .limit(1);
+                
+            if (matchingUsers && matchingUsers.length > 0) {
+                targetAgentId = matchingUsers[0].id;
+                targetTenantId = matchingUsers[0].tenant_id;
+            }
+        }
+
+        // 2. Fallback: If no specific agent matched, find a random active/checked-in agent
+        if (!targetAgentId) {
+            const maxShiftStart = new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString();
+            const { data: attendanceData } = await supabaseAdmin
+                .from("attendance")
+                .select("user_id, tenant_id")
+                .gte("check_in", maxShiftStart)
+                .is("check_out", null);
+                
+            if (attendanceData && attendanceData.length > 0) {
+                const randomAgent = attendanceData[Math.floor(Math.random() * attendanceData.length)];
+                targetAgentId = randomAgent.user_id;
+                targetTenantId = randomAgent.tenant_id;
+            }
+        }
             
         const newLeadStatus = (dtmfInput === '1' || dtmfInput === '2') ? 'Interested' : (dtmfInput === '3' ? 'Not Interested' : 'New');
         
@@ -144,9 +166,9 @@ async function handleWebhook(req: Request) {
             status: newLeadStatus,
         };
 
-        if (activeAgent) {
-            newLeadData.assigned_to = activeAgent.user_id;
-            newLeadData.tenant_id = activeAgent.tenant_id;
+        if (targetAgentId) {
+            newLeadData.assigned_to = targetAgentId;
+            newLeadData.tenant_id = targetTenantId;
         } else {
             // Fallback: Just grab any tenant to satisfy RLS/foreign keys if needed
             const { data: fallbackTenant } = await supabaseAdmin.from('tenant_settings').select('tenant_id').limit(1).single();
