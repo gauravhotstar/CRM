@@ -185,6 +185,24 @@ async function handleWebhook(req: Request) {
 
         if (createdLead) {
             lead = createdLead;
+            
+            // Broadcast a popup specifically for the agent who just got assigned this brand-new lead!
+            if (targetAgentId) {
+                const channel = supabaseAdmin.channel('cloudconnect_events');
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'SCREEN_POP',
+                    payload: {
+                        call_uuid: uuid,
+                        extension: extensionNumber,
+                        target_agent_id: targetAgentId,
+                        caller_number: callerNumber,
+                        direction: callDirection,
+                        lead: lead,
+                        is_dtmf_auto_assign: true
+                    }
+                });
+            }
         } else {
             console.error("Failed to create new DTMF lead:", createError);
         }
@@ -192,9 +210,21 @@ async function handleWebhook(req: Request) {
 
     // 2. Handle RINGING (Screen Pop)
     if (callStatus === 'Ring') {
+        let ringAgentId = null;
+        
+        // Try to identify which agent's screen should pop based on the extension/phone provided
+        if (extensionNumber) {
+            const cleanExt = extensionNumber.replace(/^\+?\d{1,3}/, '').slice(-10);
+            const { data: ringUsers } = await supabaseAdmin.from('users').select('id').ilike('phone', `%${cleanExt}%`).limit(1);
+            if (ringUsers && ringUsers.length > 0) {
+                ringAgentId = ringUsers[0].id;
+            }
+        }
+
         const payload = {
             call_uuid: uuid,
             extension: extensionNumber,
+            target_agent_id: ringAgentId,
             caller_number: callerNumber,
             direction: callDirection,
             lead: lead || null, 

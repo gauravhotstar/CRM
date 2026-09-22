@@ -23,8 +23,10 @@ export function CallScreenPop({ agentId }: { agentId: string }) {
         (payload) => {
           const data = payload.payload;
           
-          // NOTE: In production, check if data.extension matches the current agent's extension
-          // For now, we will pop it for testing.
+          // Ignore if this popup is meant for a specific agent and it's not the current user
+          if (data.target_agent_id && data.target_agent_id !== agentId) {
+              return;
+          }
           
           // Show the screen pop toast
           toast.custom((t) => (
