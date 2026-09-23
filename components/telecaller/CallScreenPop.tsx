@@ -13,7 +13,8 @@ export function CallScreenPop({ agentId }: { agentId: string }) {
   useEffect(() => {
     if (!agentId) return;
     
-    const supabase = createClient()
+    console.log(`[ScreenPop Debug] Component mounted for Agent ID: ${agentId}`);
+    const supabase = createClient();
     
     // Listen for CloudConnect broadcasts
     const channel = supabase.channel('cloudconnect_events')
@@ -21,13 +22,16 @@ export function CallScreenPop({ agentId }: { agentId: string }) {
         'broadcast',
         { event: 'SCREEN_POP' },
         (payload) => {
+          console.log(`[ScreenPop Debug] 🚨 RECEIVED BROADCAST:`, payload);
           const data = payload.payload;
           
           // Ignore if this popup is meant for a specific agent and it's not the current user
           if (data.target_agent_id && data.target_agent_id !== agentId) {
+              console.log(`[ScreenPop Debug] ❌ Ignored. Payload targeted Agent ${data.target_agent_id}, but I am ${agentId}`);
               return;
           }
           
+          console.log(`[ScreenPop Debug] ✅ Showing toast popup now!`);
           // Show the screen pop toast
           toast.custom((t) => (
             <div className="bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 shadow-2xl rounded-xl p-4 w-[350px] flex flex-col gap-3 relative overflow-hidden">
@@ -86,7 +90,9 @@ export function CallScreenPop({ agentId }: { agentId: string }) {
           ), { duration: 20000, position: "top-right", id: `call-${data.call_uuid}` });
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log(`[ScreenPop Debug] Supabase Channel Status: ${status}`);
+      });
 
     return () => {
       supabase.removeChannel(channel)

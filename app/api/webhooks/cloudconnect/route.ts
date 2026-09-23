@@ -282,7 +282,7 @@ async function handleWebhook(req: Request) {
         };
 
         // Broadcast to Supabase Realtime channel
-        console.warn(`[Ozonetel Webhook] Broadcasting normal SCREEN_POP event...`);
+        console.warn(`[Ozonetel Webhook] Broadcasting normal SCREEN_POP event with payload:`, JSON.stringify(payload));
         const channel = supabaseAdmin.channel('cloudconnect_events');
         await channel.send({
             type: 'broadcast',
