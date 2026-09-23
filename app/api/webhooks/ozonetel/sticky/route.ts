@@ -65,10 +65,10 @@ async function handleStickyRouting(req: Request) {
         const cleanNumber = callerNumber.replace(/^\+?\d{1,3}/, '').slice(-10);
         const supabaseAdmin = getSupabaseAdmin();
 
-        // 1. Look up the lead to find the assigned agent
+        // 1. Look up the lead to find the assigned agent (fetch all data for popup)
         const { data: leads } = await supabaseAdmin
             .from('leads')
-            .select('assigned_to')
+            .select('*')
             .ilike('phone', `%${cleanNumber}%`)
             .limit(1);
 
@@ -82,11 +82,33 @@ async function handleStickyRouting(req: Request) {
         // 2. Look up the agent's mobile number
         const { data: user } = await supabaseAdmin
             .from('users')
-            .select('phone') // Assuming 'phone' column exists for agent's mobile
+            .select('phone') 
             .eq('id', lead.assigned_to)
             .single();
 
         if (user && user.phone) {
+            // 🔥 CRM WORKAROUND: Ozonetel doesn't reliably push Ring events to the Server Webhook.
+            // Since they DO hit this Sticky URL right before calling the agent, we will instantly 
+            // trigger the Screen Pop *here* so the agent sees it 1-2 seconds before their phone rings!
+            try {
+                console.warn(`[Ozonetel Sticky] Broadcasting pre-ring SCREEN_POP for agent: ${lead.assigned_to}`);
+                const channel = supabaseAdmin.channel('cloudconnect_events');
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'SCREEN_POP',
+                    payload: {
+                        call_uuid: getParam('uuid') || getParam('monitorUCID') || `sticky-${Date.now()}`,
+                        extension: user.phone,
+                        target_agent_id: lead.assigned_to,
+                        caller_number: callerNumber,
+                        direction: 'Inbound',
+                        lead: lead
+                    }
+                });
+            } catch (err) {
+                console.error("[Ozonetel Sticky] Failed to broadcast pre-ring popup:", err);
+            }
+
             // Return the agent's phone number as 'phone_name' for Ozonetel's skill-based routing
             return NextResponse.json({ phone_name: user.phone });
         }
