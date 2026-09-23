@@ -132,15 +132,30 @@ async function handleWebhook(req: Request) {
     
     const { data: leads } = await supabaseAdmin
         .from('leads')
-        .select('id, name, company, phone, status, tenant_id')
+        .select('id, name, company, phone, status, tenant_id, assigned_to')
         .ilike('phone', `%${cleanNumber}%`)
         .limit(1);
 
     let lead = leads?.[0];
     if (lead) {
-        console.log(`[Ozonetel Webhook] Found existing lead: ID ${lead.id}, Status ${lead.status}`);
+        console.log(`[Ozonetel Webhook] Found existing lead: ID ${lead.id}, Status ${lead.status}, Assigned To: ${lead.assigned_to}`);
     } else {
         console.log(`[Ozonetel Webhook] No existing lead found for ${cleanNumber}`);
+    }
+
+    // Try to resolve the agent from extensionNumber immediately
+    let matchedAgentId = null;
+    if (extensionNumber) {
+        const cleanExt = extensionNumber.replace(/^\+?\d{1,3}/, '').slice(-10);
+        const { data: matchingUsers } = await supabaseAdmin
+            .from('users')
+            .select('id, tenant_id, phone')
+            .ilike('phone', `%${cleanExt}%`)
+            .limit(1);
+            
+        if (matchingUsers && matchingUsers.length > 0) {
+            matchedAgentId = matchingUsers[0].id;
+        }
     }
 
     // If no lead exists but we got DTMF, create one & assign
@@ -287,12 +302,23 @@ async function handleWebhook(req: Request) {
             .eq('cloudconnect_uuid', uuid)
             .single();
 
+        let callLogUserId = matchedAgentId || (lead?.assigned_to) || null;
+        
+        // Final fallback: if absolutely no user can be matched (e.g. fully automated IVR dropping), pick a system admin to satisfy DB constraint
+        if (!callLogUserId) {
+            const { data: fallbackUsers } = await supabaseAdmin.from('users').select('id').limit(1);
+            if (fallbackUsers && fallbackUsers.length > 0) {
+                callLogUserId = fallbackUsers[0].id;
+            }
+        }
+
         const logData: any = {
             cloudconnect_uuid: uuid,
             call_type: callDirection.toLowerCase() || 'inbound',
             call_status: (callStatus || 'completed').toLowerCase(),
             duration_seconds: callDurationSeconds,
-            notes: `Ozonetel Call (${callStatus || 'Completed'}). Agent: ${extensionNumber}`
+            notes: `Ozonetel Call (${callStatus || 'Completed'}). Agent: ${extensionNumber}`,
+            user_id: callLogUserId
         };
 
         if (recordingUrl) {
