@@ -47,6 +47,10 @@ async function getTenantWaCredentials(tenantId: string | null) {
 
 // Unified helper to send WhatsApp messages using Fonada SendMsgOld endpoint
 async function sendViaFonadaOldApi(creds: any, phone: string, text: string) {
+  if (!creds.fonadaUser || !creds.fonadaPass || !creds.fonadaWaba) {
+    throw new Error("WhatsApp credentials (FONADA_USERID, etc.) are missing in both .env and tenant_settings. Please configure them in the CRM Admin Panel.");
+  }
+
   const apiUrl = "https://waba.fonada.com/api/SendMsgOld";
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
