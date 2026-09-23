@@ -23,14 +23,21 @@ async function handleWebhook(req: Request) {
     const url = new URL(req.url);
     const searchParams = url.searchParams;
 
+    console.log('\n======================================');
+    console.log(`[Ozonetel Webhook] Incoming ${req.method} request to ${url.pathname}`);
+    console.log(`[Ozonetel Webhook] Search Params:`, searchParams.toString());
+
     let bodyData: any = {};
     if (req.method === 'POST') {
       const contentType = req.headers.get('content-type') || '';
+      console.log(`[Ozonetel Webhook] Content-Type:`, contentType);
+      
       if (contentType.includes('application/json')) {
         try {
           bodyData = await req.json();
+          console.log(`[Ozonetel Webhook] Parsed JSON Body:`, bodyData);
         } catch (e) {
-          // ignore
+          console.error(`[Ozonetel Webhook] JSON parse error:`, e);
         }
       } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
         try {
@@ -38,8 +45,9 @@ async function handleWebhook(req: Request) {
           formData.forEach((value, key) => {
             bodyData[key] = value.toString();
           });
+          console.log(`[Ozonetel Webhook] Parsed FormData Body:`, bodyData);
         } catch (e) {
-          // ignore
+          console.error(`[Ozonetel Webhook] FormData parse error:`, e);
         }
       }
     }
@@ -53,8 +61,9 @@ async function handleWebhook(req: Request) {
         } else if (parsed && typeof parsed === 'object') {
           bodyData = { ...bodyData, ...parsed };
         }
+        console.log(`[Ozonetel Webhook] Extracted payload from stringified 'data' field:`, bodyData);
       } catch (e) {
-        // ignore
+        console.error(`[Ozonetel Webhook] Error parsing nested data JSON:`, e);
       }
     }
 
@@ -64,18 +73,22 @@ async function handleWebhook(req: Request) {
     const expectedApiKey = process.env.CLOUDCONNECT_WEBHOOK_SECRET || 'HANVA_OZT_7X9Q2P4L';
     const providedApiKey = getParam('api_key') || getParam('Apikey') || req.headers.get('x-api-key') || req.headers.get('authorization')?.replace('Bearer ', '');
 
+    console.log(`[Ozonetel Webhook] Provided API Key: ${providedApiKey ? '***' + providedApiKey.slice(-4) : 'None'}`);
+
     if (providedApiKey !== expectedApiKey && expectedApiKey !== 'HANVA_OZT_7X9Q2P4L') {
-        // Also allow the default key if defined
         if (providedApiKey !== 'HANVA_OZT_7X9Q2P4L') {
+            console.error(`[Ozonetel Webhook] Unauthorized (Invalid API Key)`);
             return NextResponse.json({ error: 'Unauthorized: Invalid API Key' }, { status: 401 });
         }
     } else if (providedApiKey !== expectedApiKey) {
+        console.error(`[Ozonetel Webhook] Unauthorized (Invalid API Key)`);
         return NextResponse.json({ error: 'Unauthorized: Invalid API Key' }, { status: 401 });
     }
 
     // Ping / Verification check (e.g. if testing from Postman or webhook setup without call details)
     const hasCallData = getParam('uuid') || getParam('CallUUID') || getParam('call_uuid') || getParam('monitorUCID') || getParam('UCID') || getParam('CallID') || getParam('caller_number') || getParam('CallerID') || getParam('CustomerNumber') || getParam('cid');
     if (!hasCallData) {
+        console.log(`[Ozonetel Webhook] Ping success (No call data found, just verification).`);
         return NextResponse.json({ 
             success: true, 
             message: 'API key verified successfully. Webhook endpoint is active and ready to receive call events.' 
@@ -86,11 +99,13 @@ async function handleWebhook(req: Request) {
     const uuid = getParam('uuid') || getParam('CallUUID') || getParam('call_uuid') || getParam('monitorUCID') || getParam('UCID') || getParam('CallID') || getParam('DataUniqueId') || `call_${Date.now()}`;
     const extensionNumber = getParam('extension_number') || getParam('agent_id') || getParam('AgentID') || getParam('AgentPhoneNumber') || getParam('PhoneName') || '';
     const callerNumber = getParam('caller_number') || getParam('CallerID') || getParam('CustomerNumber') || getParam('caller_id') || getParam('cid') || getParam('PhoneNumber') || getParam('DialedNumber') || '';
-    const callStatus = getParam('call_status') || getParam('Status') || getParam('status') || getParam('DialStatus') || getParam('CustomerStatus') || ''; // 'Ring', 'Answered', 'Hangup'
+    const callStatus = getParam('call_status') || getParam('Status') || getParam('status') || getParam('DialStatus') || getParam('CustomerStatus') || ''; 
     const callDirection = getParam('call_direction') || getParam('Direction') || getParam('direction') || getParam('Type') || 'inbound';
     const rawDuration = getParam('call_duration') || getParam('CallDuration') || getParam('Duration') || getParam('duration') || '0';
     const dtmfInput = getParam('dtmf_input') || getParam('digit') || getParam('AudioInput') || getParam('Input') || '';
     const recordingUrl = getParam('recording_url') || getParam('AudioFile') || getParam('RecordingUrl') || '';
+
+    console.log(`[Ozonetel Webhook] Extracted Values -> UUID: ${uuid}, Caller: ${callerNumber}, Ext: ${extensionNumber}, Status: ${callStatus}, DTMF: ${dtmfInput}, Duration: ${rawDuration}`);
 
     // Convert duration like "00:01:20" or "80" to seconds
     const parseDurationSeconds = (val: string): number => {
@@ -111,6 +126,7 @@ async function handleWebhook(req: Request) {
     // 1. Find the Lead
     // Format the number to get the last 10 digits for better matching
     const cleanNumber = callerNumber.replace(/^\+?\d{1,3}/, '').slice(-10); 
+    console.log(`[Ozonetel Webhook] Searching for Lead with phone containing: ${cleanNumber}`);
     
     const supabaseAdmin = getSupabaseAdmin();
     
@@ -121,9 +137,15 @@ async function handleWebhook(req: Request) {
         .limit(1);
 
     let lead = leads?.[0];
+    if (lead) {
+        console.log(`[Ozonetel Webhook] Found existing lead: ID ${lead.id}, Status ${lead.status}`);
+    } else {
+        console.log(`[Ozonetel Webhook] No existing lead found for ${cleanNumber}`);
+    }
 
     // If no lead exists but we got DTMF, create one & assign
     if (!lead && dtmfInput) {
+        console.log(`[Ozonetel Webhook] Auto-creating DTMF Lead for phone: ${callerNumber}, digit: ${dtmfInput}`);
         let targetAgentId = null;
         let targetTenantId = null;
 
@@ -139,11 +161,13 @@ async function handleWebhook(req: Request) {
             if (matchingUsers && matchingUsers.length > 0) {
                 targetAgentId = matchingUsers[0].id;
                 targetTenantId = matchingUsers[0].tenant_id;
+                console.log(`[Ozonetel Webhook] Matched specific agent by extension: ${targetAgentId}`);
             }
         }
 
         // 2. Fallback: If no specific agent matched, find a random active/checked-in agent
         if (!targetAgentId) {
+            console.log(`[Ozonetel Webhook] No specific agent found, falling back to random attendance selection.`);
             const maxShiftStart = new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString();
             const { data: attendanceData } = await supabaseAdmin
                 .from("attendance")
@@ -155,6 +179,9 @@ async function handleWebhook(req: Request) {
                 const randomAgent = attendanceData[Math.floor(Math.random() * attendanceData.length)];
                 targetAgentId = randomAgent.user_id;
                 targetTenantId = randomAgent.tenant_id;
+                console.log(`[Ozonetel Webhook] Selected random active agent: ${targetAgentId}`);
+            } else {
+                console.log(`[Ozonetel Webhook] No active agents found in attendance to assign lead.`);
             }
         }
             
@@ -177,6 +204,8 @@ async function handleWebhook(req: Request) {
             }
         }
 
+        console.log(`[Ozonetel Webhook] Inserting new lead:`, newLeadData);
+
         const { data: createdLead, error: createError } = await supabaseAdmin
             .from('leads')
             .insert([newLeadData])
@@ -184,10 +213,12 @@ async function handleWebhook(req: Request) {
             .single();
 
         if (createdLead) {
+            console.log(`[Ozonetel Webhook] Successfully created Lead ID: ${createdLead.id}`);
             lead = createdLead;
             
             // Broadcast a popup specifically for the agent who just got assigned this brand-new lead!
             if (targetAgentId) {
+                console.log(`[Ozonetel Webhook] Broadcasting DTMF auto-assign SCREEN_POP for agent: ${targetAgentId}`);
                 const channel = supabaseAdmin.channel('cloudconnect_events');
                 await channel.send({
                     type: 'broadcast',
@@ -210,6 +241,7 @@ async function handleWebhook(req: Request) {
 
     // 2. Handle RINGING (Screen Pop)
     if (callStatus === 'Ring') {
+        console.log(`[Ozonetel Webhook] Processing Ringing event for screen pop.`);
         let ringAgentId = null;
         
         // Try to identify which agent's screen should pop based on the extension/phone provided
@@ -218,6 +250,9 @@ async function handleWebhook(req: Request) {
             const { data: ringUsers } = await supabaseAdmin.from('users').select('id').ilike('phone', `%${cleanExt}%`).limit(1);
             if (ringUsers && ringUsers.length > 0) {
                 ringAgentId = ringUsers[0].id;
+                console.log(`[Ozonetel Webhook] Identified agent ${ringAgentId} for Ring screen pop.`);
+            } else {
+                console.log(`[Ozonetel Webhook] Could not find agent for extension ${cleanExt} for Ring screen pop.`);
             }
         }
 
@@ -231,6 +266,7 @@ async function handleWebhook(req: Request) {
         };
 
         // Broadcast to Supabase Realtime channel
+        console.log(`[Ozonetel Webhook] Broadcasting normal SCREEN_POP event...`);
         const channel = supabaseAdmin.channel('cloudconnect_events');
         await channel.send({
             type: 'broadcast',
@@ -238,11 +274,13 @@ async function handleWebhook(req: Request) {
             payload: payload
         });
         
+        console.log(`[Ozonetel Webhook] Ringing event broadcasted successfully.`);
         return NextResponse.json({ success: true, message: 'Ringing event broadcasted' });
     }
 
     // 3. Handle Completed Call / Callback Log (Hangup, Answered, NotAnswered, etc.)
     if (callStatus !== 'Ring') {
+        console.log(`[Ozonetel Webhook] Processing end-of-call log saving. Status: ${callStatus}`);
         const { data: existingLog } = await supabaseAdmin
             .from('call_logs')
             .select('id')
@@ -268,24 +306,30 @@ async function handleWebhook(req: Request) {
 
         if (lead?.id) {
             logData.lead_id = lead.id;
-            
-            // Note: Auto-updating lead status to 'Interested'/'Not Interested' based on DTMF 
-            // has been disabled per user request. Status remains unchanged (or 'new').
+            console.log(`[Ozonetel Webhook] Attaching call log to Lead ID: ${lead.id}`);
+        } else {
+            console.log(`[Ozonetel Webhook] No lead found to attach this call log to.`);
         }
 
         if (existingLog) {
-            await supabaseAdmin.from('call_logs').update(logData).eq('id', existingLog.id);
+            console.log(`[Ozonetel Webhook] Updating existing call log ID: ${existingLog.id}`);
+            const { error: updateError } = await supabaseAdmin.from('call_logs').update(logData).eq('id', existingLog.id);
+            if (updateError) console.error(`[Ozonetel Webhook] Error updating call log:`, updateError);
         } else {
-            await supabaseAdmin.from('call_logs').insert([logData]);
+            console.log(`[Ozonetel Webhook] Inserting new call log.`);
+            const { error: insertError } = await supabaseAdmin.from('call_logs').insert([logData]);
+            if (insertError) console.error(`[Ozonetel Webhook] Error inserting call log:`, insertError);
         }
 
+        console.log(`[Ozonetel Webhook] Finished processing successfully.`);
         return NextResponse.json({ success: true, message: 'Call log saved' });
     }
 
+    console.log(`[Ozonetel Webhook] Event ignored (no matching conditions).`);
     return NextResponse.json({ success: true, message: 'Event ignored' });
 
   } catch (error: any) {
-    console.error('Webhook Error:', error);
+    console.error('[Ozonetel Webhook] Critical Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
