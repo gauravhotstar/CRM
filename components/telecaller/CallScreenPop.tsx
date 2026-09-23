@@ -87,7 +87,7 @@ export function CallScreenPop({ agentId }: { agentId: string }) {
                 )}
               </div>
             </div>
-          ), { duration: 20000, position: "top-right", id: `call-${data.call_uuid}` });
+          ), { duration: 120000, position: "top-right", id: `call-${data.call_uuid}` });
         }
       )
       .subscribe((status) => {
