@@ -52,7 +52,7 @@ export function CallScreenPop({ agentId }: { agentId: string }) {
                 </div>
               </div>
               
-              <div className="flex gap-2 justify-end mt-2">
+              <div className="flex gap-2 justify-end mt-2 flex-wrap">
                 <Button 
                   size="sm" 
                   variant="outline" 
@@ -60,6 +60,17 @@ export function CallScreenPop({ agentId }: { agentId: string }) {
                   className="h-8 text-xs"
                 >
                   Dismiss
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => {
+                    navigator.clipboard.writeText(data.caller_number || "");
+                    toast.success("Number copied!", { id: "copy-toast" });
+                  }}
+                  className="h-8 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
+                >
+                  Copy Number
                 </Button>
                 {data.lead && (
                   <Button 
