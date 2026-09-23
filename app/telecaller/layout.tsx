@@ -58,7 +58,7 @@ export default async function TelecallerLayout({
           <GlobalAutoDialer />
           
           {user && isCloudConnectEnabled && <CloudConnectSoftphone agentId={user.id} />}
-          {user && isCloudConnectEnabled && <CallScreenPop agentId={user.id} />}
+          {user && <CallScreenPop agentId={user.id} />}
           
           {/* ✅ Added dark:bg-gray-900 so dark mode actually changes the background */}
           <div className="flex h-screen bg-gray-50 dark:bg-slate-950">
