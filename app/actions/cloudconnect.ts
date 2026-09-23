@@ -34,6 +34,10 @@ export async function createAgentSession(agentId: string) {
       return { success: false, error: data.status_message || "Failed to create session" };
     }
   } catch (error: any) {
+    if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+      // Intentionally aborted due to 3-second timeout, no need to print a scary error
+      return { success: false, error: 'Legacy CloudConnect skipped (Timeout)' };
+    }
     console.error("CloudConnect Create Session Error:", error);
     return { success: false, error: error.message };
   }
@@ -70,6 +74,9 @@ export async function initiateCloudConnectCall(customerPhone: string, agentId: s
       return { success: false, error: data.status_message || "Failed to initiate call" };
     }
   } catch (error: any) {
+    if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+      return { success: false, error: 'Legacy CloudConnect skipped (Timeout)' };
+    }
     console.error("CloudConnect Call Error:", error);
     return { success: false, error: error.message };
   }
