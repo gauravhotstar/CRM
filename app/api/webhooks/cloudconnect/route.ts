@@ -255,7 +255,8 @@ async function handleWebhook(req: Request) {
     }
 
     // 2. Handle RINGING (Screen Pop)
-    if (callStatus === 'Ring') {
+    const isRinging = callStatus.toLowerCase() === 'ring' || callStatus.toLowerCase() === 'ringing';
+    if (isRinging) {
         console.warn(`[Ozonetel Webhook] Processing Ringing event for screen pop.`);
         let ringAgentId = null;
         
@@ -294,7 +295,7 @@ async function handleWebhook(req: Request) {
     }
 
     // 3. Handle Completed Call / Callback Log (Hangup, Answered, NotAnswered, etc.)
-    if (callStatus !== 'Ring') {
+    if (!isRinging) {
         console.warn(`[Ozonetel Webhook] Processing end-of-call log saving. Status: ${callStatus}`);
         const { data: existingLog } = await supabaseAdmin
             .from('call_logs')
