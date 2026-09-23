@@ -158,7 +158,7 @@ async function handleWebhook(req: Request) {
             }
         }
             
-        const newLeadStatus = (dtmfInput === '1' || dtmfInput === '2') ? 'Interested' : (dtmfInput === '3' ? 'Not Interested' : 'New');
+        const newLeadStatus = 'new'; // Always 'new' as requested, regardless of digit
         
         const newLeadData: any = {
             name: `New Lead (IVR ${callerNumber})`,
@@ -269,12 +269,8 @@ async function handleWebhook(req: Request) {
         if (lead?.id) {
             logData.lead_id = lead.id;
             
-            // If they pressed 1 or 2, they are interested or need more info
-            if (dtmfInput === '1' || dtmfInput === '2') {
-                await supabaseAdmin.from('leads').update({ status: 'Interested' }).eq('id', lead.id);
-            } else if (dtmfInput === '3') {
-                await supabaseAdmin.from('leads').update({ status: 'Not Interested' }).eq('id', lead.id);
-            }
+            // Note: Auto-updating lead status to 'Interested'/'Not Interested' based on DTMF 
+            // has been disabled per user request. Status remains unchanged (or 'new').
         }
 
         if (existingLog) {
