@@ -79,14 +79,21 @@ async function handleStickyRouting(req: Request) {
             return NextResponse.json({ phone_name: "" });
         }
 
-        // 2. Look up the agent's mobile number
+        // 2. Look up the agent's mobile number and status
         const { data: user } = await supabaseAdmin
             .from('users')
-            .select('phone') 
+            .select('phone, current_status') 
             .eq('id', lead.assigned_to)
             .single();
 
         if (user && user.phone) {
+            // 🔥 Check if agent is actually available to take calls!
+            // If they are offline or on break, do not route the call to them.
+            if (user.current_status === 'offline' || user.current_status === 'break') {
+                console.warn(`[Ozonetel Sticky] Agent ${lead.assigned_to} is currently '${user.current_status}'. Refusing sticky route so Ozonetel sends call to General Queue.`);
+                return NextResponse.json({ phone_name: "" });
+            }
+
             // 🔥 CRM WORKAROUND: Ozonetel doesn't reliably push Ring events to the Server Webhook.
             // Since they DO hit this Sticky URL right before calling the agent, we will instantly 
             // trigger the Screen Pop *here* so the agent sees it 1-2 seconds before their phone rings!

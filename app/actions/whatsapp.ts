@@ -249,3 +249,36 @@ export async function sendCallbackReminderTemplate(leadId: string, customerPhone
     return { success: false, error: error.message };
   }
 }
+
+// ============================================================================
+// 6. SEND STATUS UPDATE TEMPLATE (For IVR DTMF Leads)
+// ============================================================================
+export async function sendStatusUpdateMessage(leadId: string, customerPhone: string, tenantId: string | null = null) {
+  try {
+    const supabase = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const creds = await getTenantWaCredentials(tenantId);
+
+    // EDIT THIS TEXT TO EXACTLY MATCH YOUR APPROVED 'status_update' META TEMPLATE
+    const textMessage = `Hello,\n\nThis is a status update regarding your application. We have received your request and our agent will be in touch with you shortly.\n\nThank you.`;
+
+    const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, textMessage);
+
+    const { error: insertError } = await supabase.from("chat_messages").insert({
+        lead_id: leadId, phone_number: safePhone, direction: 'outbound',
+        message_type: 'template', content: textMessage, fonada_message_id: msgId, status: 'sent'
+    });
+
+    if (insertError) throw new Error(`Database Insert Failed: ${insertError.message}`);
+
+    await supabase.from("leads").update({ 
+      last_message_at: new Date().toISOString(),
+      last_message_content: "Sent Status Update Template",
+      last_message_type: 'outbound'
+    }).eq("id", leadId);
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("Status Update WA Error:", error);
+    return { success: false, error: error.message };
+  }
+}

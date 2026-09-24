@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sendStatusUpdateMessage } from '@/app/actions/whatsapp'
 
 // Helper to lazy-load the Supabase Admin Client to bypass RLS for webhooks
 // This prevents Next.js build-time errors when env variables are missing during static analysis.
@@ -249,6 +250,14 @@ async function handleWebhook(req: Request) {
                     }
                 });
             }
+
+            // 🚀 FIRE WHATSAPP STATUS UPDATE TEMPLATE IMMEDIATELY
+            console.warn(`[Ozonetel Webhook] Firing WhatsApp 'status_update' for new DTMF lead: ${callerNumber}`);
+            // We don't await this so it doesn't block the webhook response
+            sendStatusUpdateMessage(createdLead.id, callerNumber, createdLead.tenant_id).catch(err => {
+                console.error("[Ozonetel Webhook] Failed to send WhatsApp status update:", err);
+            });
+
         } else {
             console.error("Failed to create new DTMF lead:", createError);
         }
