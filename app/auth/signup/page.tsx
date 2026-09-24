@@ -16,7 +16,7 @@ export default function SignUpPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
-  const [role, setRole] = useState<string>("")
+  const [role, setRole] = useState<string>("telecaller")
   const [phone, setPhone] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -34,7 +34,7 @@ export default function SignUpPage() {
           ? `${window.location.origin}/auth/login`
           : process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || "/auth/login"
 
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -47,6 +47,15 @@ export default function SignUpPage() {
         },
       })
       if (error) throw error
+
+      if (data?.user?.id && phone) {
+         try {
+           const { updateSignupPhone } = await import("@/app/actions/update-signup-phone");
+           await updateSignupPhone(data.user.id, phone);
+         } catch (e) {
+           console.error("Could not update phone", e);
+         }
+      }
 
       // Show success message
       alert("Account created successfully! Please check your email to verify your account.")
