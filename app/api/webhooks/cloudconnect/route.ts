@@ -181,13 +181,16 @@ async function handleWebhook(req: Request) {
             }
         }
 
-        // 2. Fallback: If no specific agent matched, find a random active/checked-in agent
+        const TARGET_IVR_TENANT_ID = '576a6280-a9a2-425c-b1dd-eabfff3a00c6';
+
+        // 2. Fallback: If no specific agent matched, find a random active/checked-in agent in the target tenant
         if (!targetAgentId) {
-            console.warn(`[Ozonetel Webhook] No specific agent found, falling back to random attendance selection.`);
+            console.warn(`[Ozonetel Webhook] No specific agent found, falling back to random attendance selection for tenant ${TARGET_IVR_TENANT_ID}.`);
             const maxShiftStart = new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString();
             const { data: attendanceData } = await supabaseAdmin
                 .from("attendance")
                 .select("user_id, tenant_id")
+                .eq("tenant_id", TARGET_IVR_TENANT_ID)
                 .gte("check_in", maxShiftStart)
                 .is("check_out", null);
                 
@@ -197,7 +200,7 @@ async function handleWebhook(req: Request) {
                 targetTenantId = randomAgent.tenant_id;
                 console.warn(`[Ozonetel Webhook] Selected random active agent: ${targetAgentId}`);
             } else {
-                console.warn(`[Ozonetel Webhook] No active agents found in attendance to assign lead.`);
+                console.warn(`[Ozonetel Webhook] No active agents found in target tenant attendance to assign lead.`);
             }
         }
             
@@ -213,11 +216,8 @@ async function handleWebhook(req: Request) {
             newLeadData.assigned_to = targetAgentId;
             newLeadData.tenant_id = targetTenantId;
         } else {
-            // Fallback: Just grab any tenant to satisfy RLS/foreign keys if needed
-            const { data: fallbackTenant } = await supabaseAdmin.from('tenant_settings').select('tenant_id').limit(1).single();
-            if (fallbackTenant) {
-                newLeadData.tenant_id = fallbackTenant.tenant_id;
-            }
+            // Fallback: Assign directly to the target tenant even if no agent is available
+            newLeadData.tenant_id = TARGET_IVR_TENANT_ID;
         }
 
         console.warn(`[Ozonetel Webhook] Inserting new lead:`, newLeadData);
