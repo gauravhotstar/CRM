@@ -64,7 +64,15 @@ async function sendViaFonadaOldApi(creds: any, phone: string, text: string) {
   formData.append("mobile", safePhone); 
   
   formData.append("msg", text);
-  formData.append("msgType", "text");
+  
+  // If a template name is provided, use the template API parameters, otherwise use standard text
+  if (text === "TEMPLATE_MODE" && (creds as any).templateName) {
+    formData.append("msgType", "template");
+    formData.append("template_name", (creds as any).templateName);
+  } else {
+    formData.append("msgType", "text");
+  }
+
   formData.append("sendMethod", "quick");
   formData.append("output", "json");
 
@@ -258,8 +266,8 @@ export async function sendStatusUpdateMessage(leadId: string, customerPhone: str
     const supabase = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
     const creds = await getTenantWaCredentials(tenantId);
 
-    // EDIT THIS TEXT TO EXACTLY MATCH YOUR APPROVED 'status_update' META TEMPLATE
-    const textMessage = `Hello,\n\nThis is a status update regarding your application. We have received your request and our agent will be in touch with you shortly.\n\nThank you.`;
+    // Exact body match from the Meta WhatsApp Manager screenshot
+    const textMessage = `Hi,\n\nThis is a required update regarding your *ICICI Bank application*.\n\nThe initial phone verification stage is complete. To continue processing your file, mandatory details are *currently pending* in your secure portal.\n\n*Please submit the required information below*.`;
 
     const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, textMessage);
 
