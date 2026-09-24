@@ -27,11 +27,26 @@ async function getTenantWaCredentials(tenantId: string | null) {
 
   if (targetTenantId) {
     const supabaseAdmin = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-    const { data: settings } = await supabaseAdmin
+    let { data: settings } = await supabaseAdmin
       .from('tenant_settings')
       .select('fonada_userid, fonada_password, fonada_waba_number, whatsapp_api_key, wa_userid, wa_password, wa_waba_number')
       .eq('tenant_id', targetTenantId)
       .maybeSingle();
+      
+    // 🔥 Fallback: If this tenant has NO credentials, grab the first tenant that DOES
+    // This prevents crashes when the webhook randomly assigns a lead to a tenant with NULL keys
+    if (!settings?.fonada_userid && !settings?.wa_userid) {
+      const { data: fallbackSettings } = await supabaseAdmin
+        .from('tenant_settings')
+        .select('fonada_userid, fonada_password, fonada_waba_number, whatsapp_api_key, wa_userid, wa_password, wa_waba_number')
+        .not('fonada_userid', 'is', null)
+        .limit(1)
+        .maybeSingle();
+        
+      if (fallbackSettings) {
+        settings = fallbackSettings;
+      }
+    }
     
     const actualUser = settings?.wa_userid || settings?.fonada_userid;
     const actualPass = settings?.wa_password || settings?.fonada_password;
