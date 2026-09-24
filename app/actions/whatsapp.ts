@@ -184,9 +184,15 @@ export async function sendMissedCallMessage(leadId: string, customerPhone: strin
 
     const creds = await getTenantWaCredentials(agent.tenant_id);
 
-    const textMessage = `⚠️ We tried calling you but *couldn't connect*.\n\nYour loan application is pending due to missing documents. To avoid processing delays, *please share* the following *immediately*:\n\n*• PAN Card*\n*• Aadhaar Card*\n*• Latest Payslip*`;
+    const templateName = "agent_callback_request";
 
-    const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, textMessage);
+    const textMessage = `[ALERT]\n\n⚠️ We tried calling you but *couldn't connect*.\n\nYour loan application is pending due to missing documents. To avoid processing delays, *please share* the following *immediately*:\n\n*• PAN Card*\n*• Aadhaar Card*\n*• Latest Payslip*\n\n[I Have Uploaded]`;
+
+    const buttonsPayload = JSON.stringify({
+      "button1": "I Have Uploaded"
+    });
+
+    const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName, buttonsPayload);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
