@@ -86,7 +86,7 @@ async function sendViaFonadaOldApi(creds: any, phone: string, text: string) {
 }
 
 // Unified helper to send TRUE WhatsApp Templates using Fonada /SendMsg/template endpoint
-async function sendTemplateViaFonadaApi(creds: any, phone: string, templateName: string) {
+async function sendTemplateViaFonadaApi(creds: any, phone: string, templateName: string, buttonsPayload?: string) {
   if (!creds.fonadaUser || !creds.fonadaPass || !creds.fonadaWaba) {
     throw new Error("WhatsApp credentials (FONADA_USERID, etc.) are missing.");
   }
@@ -102,6 +102,10 @@ async function sendTemplateViaFonadaApi(creds: any, phone: string, templateName:
   formData.append("wabaNumber", creds.fonadaWaba);
   formData.append("campaignName", "StatusUpdateAlert");
   formData.append("templateName", templateName);
+  
+  if (buttonsPayload) {
+    formData.append("buttonsPayload", buttonsPayload);
+  }
 
   const authHeader = "Basic " + Buffer.from(`${creds.fonadaUser}:${creds.fonadaPass}`).toString('base64');
 
@@ -310,8 +314,13 @@ export async function sendStatusUpdateMessage(leadId: string, customerPhone: str
     // We still define the text so it can be logged visually in the CRM Chat history
     const textMessage = `Action Required\n\nHi,\n\nThis is a required update regarding your *ICICI Bank application*.\n\nThe initial phone verification stage is complete. To continue processing your file, mandatory details are *currently pending* in your secure portal.\n\n*Please submit the required information below*.\n\n[Submit Details] [Call phone number]`;
 
+    // Define the required button payload for the interactive template
+    const buttonsPayload = JSON.stringify({
+      "button1": "Submit Details"
+    });
+
     // Send it using the REAL Template API endpoint
-    const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName);
+    const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName, buttonsPayload);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
