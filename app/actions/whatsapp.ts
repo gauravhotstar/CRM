@@ -85,6 +85,43 @@ async function sendViaFonadaOldApi(creds: any, phone: string, text: string) {
   return { safePhone, msgId: data.msgId || null };
 }
 
+// Unified helper to send TRUE WhatsApp Templates using Fonada /SendMsg/template endpoint
+async function sendTemplateViaFonadaApi(creds: any, phone: string, templateName: string) {
+  if (!creds.fonadaUser || !creds.fonadaPass || !creds.fonadaWaba) {
+    throw new Error("WhatsApp credentials (FONADA_USERID, etc.) are missing.");
+  }
+
+  const apiUrl = "https://waba.fonada.com/api/SendMsg/template";
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+  let safePhone = phone.replace(/^\+/, '');
+  if (safePhone.length === 10) safePhone = `91${safePhone}`;
+
+  const formData = new URLSearchParams();
+  formData.append("mobile", safePhone);
+  formData.append("wabaNumber", creds.fonadaWaba);
+  formData.append("campaignName", "StatusUpdateAlert");
+  formData.append("templateName", templateName);
+
+  const authHeader = "Basic " + Buffer.from(`${creds.fonadaUser}:${creds.fonadaPass}`).toString('base64');
+
+  const res = await fetch(apiUrl, { 
+    method: "POST", 
+    headers: {
+      "Authorization": authHeader,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: formData.toString() 
+  });
+  
+  const data = await res.json();
+
+  if (data.status === "error" || data.error) {
+    throw new Error(data.message || data.error || "Fonada Template API Error");
+  }
+  return { safePhone, msgId: data.msgId || null };
+}
+
 // ============================================================================
 // 1. SEND NORMAL TEXT MESSAGE (Used in your new Chat UI)
 // ============================================================================
@@ -266,10 +303,15 @@ export async function sendStatusUpdateMessage(leadId: string, customerPhone: str
     const supabase = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
     const creds = await getTenantWaCredentials(tenantId);
 
-    // Exact body match from the Meta WhatsApp Manager screenshot
-    const textMessage = `Hi,\n\nThis is a required update regarding your *ICICI Bank application*.\n\nThe initial phone verification stage is complete. To continue processing your file, mandatory details are *currently pending* in your secure portal.\n\n*Please submit the required information below*.`;
+    // This is the actual Template Name from your Meta Dashboard
+    // If the template name is different than 'status_update', change it here!
+    const templateName = "status_update"; 
 
-    const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, textMessage);
+    // We still define the text so it can be logged visually in the CRM Chat history
+    const textMessage = `Action Required\n\nHi,\n\nThis is a required update regarding your *ICICI Bank application*.\n\nThe initial phone verification stage is complete. To continue processing your file, mandatory details are *currently pending* in your secure portal.\n\n*Please submit the required information below*.\n\n[Submit Details] [Call phone number]`;
+
+    // Send it using the REAL Template API endpoint
+    const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
