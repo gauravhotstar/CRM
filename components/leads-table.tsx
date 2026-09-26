@@ -249,6 +249,13 @@ export function LeadsTable({ leads = [], telecallers = [], telecallerStatus = {}
   const enabledStatusValues = org?.enabled_statuses || currentMasterStatuses.map(s => s.value)
   const availableStatuses = currentMasterStatuses.filter(s => enabledStatusValues.includes(s.value))
 
+  const kanbanColumns = useMemo(() => {
+    return availableStatuses.map(s => {
+      const color = s.btnColor.split(' ')[0] || 'bg-slate-500'
+      return { id: s.value, title: s.label, color: color }
+    })
+  }, [availableStatuses])
+
   const handleExportAll = (status: string) => {
     window.location.href = `/api/admin/leads/export?status=${status}`;
   }
@@ -1105,27 +1112,13 @@ export function LeadsTable({ leads = [], telecallers = [], telecallerStatus = {}
   }
 
   const getStatusPillClasses = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'new':
-        return 'bg-blue-50/80 text-blue-750 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200/80 dark:border-blue-900/50 hover:bg-blue-100/80 dark:hover:bg-blue-950/60 transition-all font-semibold'
-      case 'interested':
-      case 'disbursed':
-        return 'bg-emerald-50/80 text-emerald-750 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-900/50 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/60 transition-all font-semibold'
-      case 'contacted':
-      case 'documents_sent':
-      case 'login':
-      case 'follow_up':
-        return 'bg-amber-50/80 text-amber-750 dark:bg-amber-950/40 dark:text-amber-300 border-amber-250 dark:border-amber-900/50 hover:bg-amber-100/80 dark:hover:bg-amber-950/60 transition-all font-semibold'
-      case 'nr':
-      case 'recycle_pool':
-        return 'bg-slate-50/80 text-slate-600 dark:bg-slate-900/50 dark:text-slate-400 border-slate-200/80 dark:border-slate-800 hover:bg-slate-100/80 dark:hover:bg-slate-900/70 transition-all font-semibold'
-      case 'not_interested':
-      case 'dead_bucket':
-      case 'not_eligible':
-        return 'bg-rose-50/80 text-rose-750 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200/80 dark:border-rose-900/50 hover:bg-rose-100/80 dark:hover:bg-rose-950/60 transition-all font-semibold'
-      default:
-        return 'bg-slate-55 text-slate-700 dark:bg-slate-900 dark:text-slate-450 border-slate-200 hover:bg-slate-100 transition-all font-semibold'
+    const found = availableStatuses.find(s => s.value.toLowerCase() === status.toLowerCase());
+    if (found) {
+      // Use the pill color defined in MASTER_STATUSES, e.g. "bg-cyan-100 text-cyan-800"
+      // Add border and font-semibold to match the old design
+      return `${found.color} border border-current font-semibold transition-all`;
     }
+    return 'bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-400 border border-slate-200 transition-all font-semibold'
   }
 
   const getSafeValue = (value: any, defaultValue: string = 'N/A') => {
@@ -1256,8 +1249,8 @@ export function LeadsTable({ leads = [], telecallers = [], telecallerStatus = {}
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                {KANBAN_COLUMNS.map(col => (
-                    <SelectItem key={col.id} value={col.id}>{col.title}</SelectItem>
+                {availableStatuses.map(status => (
+                    <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1451,17 +1444,9 @@ export function LeadsTable({ leads = [], telecallers = [], telecallerStatus = {}
                     <SelectValue placeholder="Update Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="new">New</SelectItem>
-                    <SelectItem value="contacted">Contacted</SelectItem>
-                    <SelectItem value="Interested">Interested</SelectItem>
-                    <SelectItem value="Documents_Sent">Documents Sent</SelectItem>
-                    <SelectItem value="Login">Login</SelectItem>
-                    <SelectItem value="nr">Not Reachable</SelectItem>
-                    <SelectItem value="Disbursed">Disbursed</SelectItem>
-                    <SelectItem value="follow_up">Follow Up</SelectItem>
-                    <SelectItem value="Not_Interested">Not Interested</SelectItem>
-                    <SelectItem value="self_employed">Self Employed</SelectItem>
-                    <SelectItem value="not_eligible">Not Eligible</SelectItem>
+                    {availableStatuses.map(status => (
+                        <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
 
@@ -1737,10 +1722,9 @@ export function LeadsTable({ leads = [], telecallers = [], telecallerStatus = {}
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
-                                {KANBAN_COLUMNS.map(col => (
-                                    <SelectItem key={col.id} value={col.id} className="rounded-lg text-xs">{col.title}</SelectItem>
+                                {availableStatuses.map(status => (
+                                    <SelectItem key={status.value} value={status.value} className="rounded-lg text-xs">{status.label}</SelectItem>
                                 ))}
-                                <SelectItem value="not_eligible" className="rounded-lg text-xs">Not Eligible</SelectItem>
                             </SelectContent>
                             </Select>
                         </TableCell>
@@ -2076,7 +2060,7 @@ export function LeadsTable({ leads = [], telecallers = [], telecallerStatus = {}
         /* KANBAN BOARD VIEW */
         <div className="h-[calc(100vh-220px)] overflow-x-auto pb-4">
           <div className="flex gap-4 h-full min-w-[1200px]">
-            {KANBAN_COLUMNS.map(col => {
+            {kanbanColumns.map(col => {
               const colLeads = enrichedLeads.filter(l => l.status === col.id);
               const totalAmount = colLeads.reduce((sum, l) => sum + (l.loan_amount || 0), 0);
               
