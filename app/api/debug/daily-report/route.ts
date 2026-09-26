@@ -122,17 +122,22 @@ export async function GET(request: Request) {
     report.steps.call_logs_yesterday = '⏭️ Skipped — no telecallers to query'
   }
 
-  // ── STEP 6: Test Resend API connection ────────────────────────────
+  // ── STEP 6: Test Resend by sending to Resend's official test sink ─
+  // NOTE: domains.list() requires full API key. A send-only key gives 401 there.
+  // So we test by actually sending to Resend's sink — this is the real test.
   try {
     const resend = new Resend(process.env.RESEND_API_KEY)
-    const { data: domains, error: resendError } = await resend.domains.list()
+    const { data, error: resendError } = await resend.emails.send({
+      from: 'Hanva CRM <reports@crm.hanva.in>',
+      to: 'delivered@resend.dev',  // Resend's official test sink - always safe
+      subject: 'CRM Debug - Resend Connection Test',
+      html: '<p>This is an automated connection test from Hanva CRM debug endpoint.</p>',
+    })
 
     if (resendError) {
-      report.steps.resend_api = `❌ Resend API error: ${JSON.stringify(resendError)}`
+      report.steps.resend_api = `❌ Send FAILED: ${JSON.stringify(resendError)} — The domain crm.hanva.in is probably NOT verified in Resend, OR the API key is wrong.`
     } else {
-      report.steps.resend_api = `✅ Resend API connected. Verified domains: ${
-        (domains as any)?.data?.map((d: any) => d.name).join(', ') || 'none listed'
-      }`
+      report.steps.resend_api = `✅ Resend can send emails! The domain crm.hanva.in IS verified. Test msg ID: ${data?.id}`
     }
   } catch (e: any) {
     report.steps.resend_api = `❌ Resend exception: ${e.message}`
