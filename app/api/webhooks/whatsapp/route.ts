@@ -217,6 +217,31 @@ export async function POST(request: NextRequest) {
               return NextResponse.json({ status: "success", action: "lead_rescued" });
           }
 
+          // CUSTOMER QUICK REPLIES OVERRIDE (High priority)
+          if (!isMedia) {
+              const isDocRequest = 
+                  textLower.includes("submit details") || 
+                  textLower.includes("what are required documents") || 
+                  textLower.includes("i want to apply personal loan");
+              
+              if (isDocRequest) {
+                  const replyMsg = `Thank you for your interest in a Personal Loan. To proceed with your application, please share the following documents:\n\n*✅ Aadhar Card*\n*✅ PAN Card*\n*✅ One month's payslip*\n\n*You can upload them here or reply to this message* with the attachments. We'll begin the verification process right away.`;
+                  await sendFonadaMessage(customerPhone, replyMsg, fonadaUser, fonadaPass, fonadaWaba, lead.id, tenantId);
+                  return NextResponse.json({ status: "success", action: "quick_reply_docs" });
+              }
+
+              const isInterestRequest = 
+                  textLower.includes("what's the interest rate") || 
+                  textLower.includes("whats the interest rate") || 
+                  textLower.includes("what is the interest rate");
+
+              if (isInterestRequest) {
+                  const replyMsg = `Starting From 9.99% so Kindly Share Documents`;
+                  await sendFonadaMessage(customerPhone, replyMsg, fonadaUser, fonadaPass, fonadaWaba, lead.id, tenantId);
+                  return NextResponse.json({ status: "success", action: "quick_reply_interest" });
+              }
+          }
+
           // AI CHAT AGENT (OpenRouter)
           if (settings?.whatsapp_ai_agent_enabled) {
               try {
