@@ -4,7 +4,6 @@ import { CallTrackingProvider } from "@/context/call-tracking-context"
 import { PushSubscriber } from "@/components/push-subscriber" 
 import { TelecallerTicker } from "@/components/telecaller-ticker"
 import { DailyWelcomeModal } from "@/components/telecaller/daily-welcome-modal"
-import { GlobalAutoDialer } from "@/components/telecaller/GlobalAutoDialer"
 import { Watermark } from "@/components/watermark"
 
 // ✅ 1. IMPORT YOUR AGENT STATUS BAR & SUPABASE SERVER
@@ -55,7 +54,6 @@ export default async function TelecallerLayout({
         <CallTrackingProvider>
           
           <DailyWelcomeModal />
-          <GlobalAutoDialer />
           
           {user && isCloudConnectEnabled && <CloudConnectSoftphone agentId={user.id} />}
           {user && <CallScreenPop agentId={user.id} />}
