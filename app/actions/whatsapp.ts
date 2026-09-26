@@ -101,7 +101,7 @@ async function sendViaFonadaOldApi(creds: any, phone: string, text: string) {
 }
 
 // Unified helper to send TRUE WhatsApp Templates using Fonada /SendMsg/template endpoint
-async function sendTemplateViaFonadaApi(creds: any, phone: string, templateName: string, buttonsPayload?: string) {
+async function sendTemplateViaFonadaApi(creds: any, phone: string, templateName: string, buttonsPayload?: string, bodyVariables?: string[]) {
   if (!creds.fonadaUser || !creds.fonadaPass || !creds.fonadaWaba) {
     throw new Error("WhatsApp credentials (FONADA_USERID, etc.) are missing.");
   }
@@ -120,6 +120,10 @@ async function sendTemplateViaFonadaApi(creds: any, phone: string, templateName:
   
   if (buttonsPayload) {
     formData.append("buttonsPayload", buttonsPayload);
+  }
+  
+  if (bodyVariables && bodyVariables.length > 0) {
+    formData.append("bodyVariables", JSON.stringify(bodyVariables));
   }
 
   const authHeader = "Basic " + Buffer.from(`${creds.fonadaUser}:${creds.fonadaPass}`).toString('base64');
@@ -181,6 +185,8 @@ export async function sendMissedCallMessage(leadId: string, customerPhone: strin
 
     const { data: agent, error } = await supabase.from('users').select('full_name, phone, tenant_id').eq('id', user.id).single();
     if (error || !agent) throw new Error("Could not fetch agent details");
+    
+    const { data: lead } = await supabase.from('leads').select('name').eq('id', leadId).single();
 
     const creds = await getTenantWaCredentials(agent.tenant_id);
 
@@ -191,8 +197,11 @@ export async function sendMissedCallMessage(leadId: string, customerPhone: strin
     const buttonsPayload = JSON.stringify({
       "button1": "I Have Uploaded"
     });
+    
+    const customerName = lead?.name?.split(' ')[0] || "Customer";
+    const agentName = agent.full_name?.split(' ')[0] || "Agent";
 
-    const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName, buttonsPayload);
+    const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName, buttonsPayload, [customerName, agentName]);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
