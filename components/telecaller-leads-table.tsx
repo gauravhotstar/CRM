@@ -309,6 +309,7 @@ export function TelecallerLeadsTable({
             <TableBody>
                {sortedLeads.map((lead) => {
                 const isHighPriority = lead.priority === 'high';
+                const neverContacted = !lead.last_contacted;
                 const isDialing = isDialingC2C === lead.id;
                 const isHot = Array.isArray(lead.tags) && lead.tags.some(t => t.includes("Hot Prospect"));
                 const isDNC = Array.isArray(lead.tags) && lead.tags.some(t => t.includes("Do Not Call"));
@@ -316,6 +317,7 @@ export function TelecallerLeadsTable({
                 return (
                   <TableRow key={lead.id} className={cn(
                     "group transition-all duration-200 border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/50 dark:hover:bg-slate-800/30", 
+                    neverContacted ? "border-l-4 border-l-red-500 bg-red-50/30 dark:bg-red-950/10" :
                     isHighPriority ? "border-l-4 border-l-red-500 bg-red-500/[0.01]" : "",
                     isHot ? "bg-orange-500/[0.02] hover:bg-orange-500/[0.04] border-l-4 border-l-orange-500 font-medium" : "",
                     isDNC ? "opacity-60 bg-red-50/5 hover:bg-red-50/10 border-l-4 border-l-red-400" : ""
@@ -369,7 +371,7 @@ export function TelecallerLeadsTable({
                       <div className="flex flex-col">
                         <Link href={`/telecaller/leads/${lead.id}`} className="font-bold text-slate-800 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1.5 group/link text-[13px]">
                             {lead.name}
-                            {isToday(lead.created_at) && !lead.last_contacted && (
+                            {neverContacted && (
                                 <Badge className="text-[9px] px-1.5 py-0 rounded-md font-extrabold bg-red-600 hover:bg-red-600 text-white shadow-sm animate-pulse shrink-0">
                                     HIGH
                                 </Badge>
@@ -490,6 +492,7 @@ export function TelecallerLeadsTable({
       )}>
         {sortedLeads.map((lead, index) => {
           const isHighPriority = lead.priority === 'high';
+          const neverContacted = !lead.last_contacted;
           const isDialing = isDialingC2C === lead.id;
           const isHot = Array.isArray(lead.tags) && lead.tags.some(t => t.includes("Hot Prospect"));
           const isDNC = Array.isArray(lead.tags) && lead.tags.some(t => t.includes("Do Not Call"));
@@ -507,6 +510,7 @@ export function TelecallerLeadsTable({
               key={lead.id} 
               className={cn(
                 "relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 transition-all duration-300 active:scale-[0.99] flex flex-col gap-3.5",
+                neverContacted ? "border-red-300 dark:border-red-900/50 bg-red-50/20 dark:bg-red-950/10" : "",
                 isHot ? "shadow-orange-500/5 shadow-md border-orange-200 dark:border-orange-950/30" : "",
                 isDNC ? "opacity-60 bg-red-50/5 border-red-200 dark:border-red-950/30" : ""
               )}
@@ -514,6 +518,7 @@ export function TelecallerLeadsTable({
               {/* Left Edge Priority Indicator Ribbon */}
               <div className={cn(
                 "absolute top-4 bottom-4 left-0 w-[4px] rounded-r-lg",
+                neverContacted ? "bg-red-500" :
                 isHighPriority ? "bg-red-500" : lead.priority === 'medium' ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"
               )} />
 
@@ -538,7 +543,7 @@ export function TelecallerLeadsTable({
                             </Tooltip>
                         </TooltipProvider>
                     )}
-                    {isToday(lead.created_at) && !lead.last_contacted && (
+                    {neverContacted && (
                         <Badge className="text-[9px] px-1.5 py-0 rounded-md font-extrabold bg-red-600 hover:bg-red-600 text-white shadow-sm animate-pulse shrink-0">
                             HIGH
                         </Badge>

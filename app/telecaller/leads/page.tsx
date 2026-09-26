@@ -61,6 +61,7 @@ export default async function TelecallerLeadsPage({
     .from("leads")
     .select("*", { count: "exact" })
     .eq("assigned_to", user.id)
+    .order("last_contacted", { ascending: true, nullsFirst: true })  // Never-contacted leads always first
     .order(sortBy, { ascending: sortOrder })
     .range(from, to)
 
