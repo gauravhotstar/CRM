@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Building2, Users, Loader2, Plus, Server, ShieldAlert, Settings, CheckSquare, MessageSquare, BarChart3, Presentation, Workflow, CloudUpload, Activity, Lock, Unlock, UserCheck, MapPin, Phone } from "lucide-react"
 import { toast } from "sonner"
 
-import { provisionNewTenant, updateTenantSettings, fetchAllOrganizations, fetchGlobalStatuses, addGlobalStatus, toggleTenantSuspension, impersonateTenant, fetchAllAnnouncements, createAnnouncement, toggleAnnouncement, fetchRecentSystemActivity, deleteTenantLeadsByStatus } from "@/app/actions/super-admin"
+import { provisionNewTenant, updateTenantSettings, fetchAllOrganizations, fetchGlobalStatuses, addGlobalStatus, toggleTenantSuspension, impersonateTenant, fetchAllAnnouncements, createAnnouncement, toggleAnnouncement, fetchRecentSystemActivity,  } from "@/app/actions/super-admin"
 import { MASTER_STATUSES, DEFAULT_WORKFLOW_TRIGGERS, resolveIcon } from "@/lib/lead-statuses"
 import { LoadingSkeleton } from "@/components/loading-skeleton"
 import { useRouter } from "next/navigation"
@@ -154,7 +154,7 @@ export default function SuperAdminConsole() {
     if (!confirm(`Are you absolutely sure you want to delete ALL leads with status '${deleteLeadsStatus}' for ${deleteLeadsOrg.name}? This action CANNOT be undone.`)) return;
 
     setIsDeletingLeads(true)
-    const res = await deleteTenantLeadsByStatus(deleteLeadsOrg.id, deleteLeadsStatus)
+    const res = await (deleteLeadsOrg.id, deleteLeadsStatus)
     if (res.success) {
       toast.success(res.message)
       setShowDeleteLeadsModal(false)
