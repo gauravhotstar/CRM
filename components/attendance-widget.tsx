@@ -85,17 +85,18 @@ export function AttendanceWidget({ targetHours = 9 }: AttendanceWidgetProps) {
       const { data: profile } = await supabase.from('users').select('tenant_id').eq('id', user.id).single();
       if (!profile?.tenant_id) return;
 
-      const { data, error } = await supabase.from('attendance_settings').select('*').eq('tenant_id', profile.tenant_id).maybeSingle();
-      if (!error && data) {
-         if (data.office_location) {
-             const parsedOffices = typeof data.office_location === 'string' ? JSON.parse(data.office_location) : data.office_location;
-             setOffices(Array.isArray(parsedOffices) && parsedOffices.length > 0 ? parsedOffices : []);
-         }
-         if (data.work_hours_start) {
-             const [h, m] = data.work_hours_start.split(':');
-             setLateThresholdHour(parseInt(h));
-             setLateThresholdMinute(parseInt(m));
-         }
+      // 1. Fetch Offices from office_locations
+      const { data: officeData, error: officeError } = await supabase.from('office_locations').select('*').eq('tenant_id', profile.tenant_id);
+      if (!officeError && officeData) {
+        setOffices(officeData);
+      }
+
+      // 2. Fetch Late Thresholds from attendance_settings
+      const { data: settingsData, error: settingsError } = await supabase.from('attendance_settings').select('*').eq('tenant_id', profile.tenant_id).maybeSingle();
+      if (!settingsError && settingsData?.work_hours_start) {
+         const [h, m] = settingsData.work_hours_start.split(':');
+         setLateThresholdHour(parseInt(h));
+         setLateThresholdMinute(parseInt(m));
       }
     };
     fetchSettings();
