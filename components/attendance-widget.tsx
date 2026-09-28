@@ -26,8 +26,8 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
 // --- CONFIGURATION ---
-const LATE_THRESHOLD_HOUR = 9;
-const LATE_THRESHOLD_MINUTE = 30;
+ 
+ 
 
 type Office = {
   id: string;
@@ -42,6 +42,9 @@ interface AttendanceWidgetProps {
 }
 
 export function AttendanceWidget({ targetHours = 9 }: AttendanceWidgetProps) {
+  const [lateThresholdHour, setLateThresholdHour] = useState(9);
+  const [lateThresholdMinute, setLateThresholdMinute] = useState(30);
+
   const {
     todayAttendance,
     loading,
@@ -75,13 +78,27 @@ export function AttendanceWidget({ targetHours = 9 }: AttendanceWidgetProps) {
   // --- 1. FETCH OFFICES, IP, & NETWORK LISTENER ---
   useEffect(() => {
     // Fetch dynamic office locations from database
-    const fetchOffices = async () => {
-      const { data, error } = await supabase.from('office_locations').select('*');
+    const fetchSettings = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data: profile } = await supabase.from('users').select('tenant_id').eq('id', user.id).single();
+      if (!profile?.tenant_id) return;
+
+      const { data, error } = await supabase.from('attendance_settings').select('*').eq('tenant_id', profile.tenant_id).maybeSingle();
       if (!error && data) {
-        setOffices(data);
+         if (data.office_location) {
+             const parsedOffices = typeof data.office_location === 'string' ? JSON.parse(data.office_location) : data.office_location;
+             setOffices(Array.isArray(parsedOffices) && parsedOffices.length > 0 ? parsedOffices : []);
+         }
+         if (data.work_hours_start) {
+             const [h, m] = data.work_hours_start.split(':');
+             setLateThresholdHour(parseInt(h));
+             setLateThresholdMinute(parseInt(m));
+         }
       }
     };
-    fetchOffices();
+    fetchSettings();
 
     // Fetch IP Address
     const fetchIP = async () => {
@@ -501,8 +518,8 @@ export function AttendanceWidget({ targetHours = 9 }: AttendanceWidgetProps) {
     return `${h}:${m}:${sec}`;
   };
 
-  const isLateNow = () => isAfter(new Date(), setMinutes(setHours(new Date(), LATE_THRESHOLD_HOUR), LATE_THRESHOLD_MINUTE));
-  const wasLate = useMemo(() => todayAttendance?.check_in && isAfter(new Date(todayAttendance.check_in), setMinutes(setHours(new Date(todayAttendance.check_in), LATE_THRESHOLD_HOUR), LATE_THRESHOLD_MINUTE)), [todayAttendance]);
+  const isLateNow = () => isAfter(new Date(), setMinutes(setHours(new Date(), lateThresholdHour), lateThresholdMinute));
+  const wasLate = useMemo(() => todayAttendance?.check_in && isAfter(new Date(todayAttendance.check_in), setMinutes(setHours(new Date(todayAttendance.check_in), lateThresholdHour), lateThresholdMinute)), [todayAttendance]);
   
   // Calculate progress against dynamic target hours
   const progressPercentage = Math.min((elapsedTime / (targetHours * 3600)) * 100, 100);
@@ -633,7 +650,7 @@ export function AttendanceWidget({ targetHours = 9 }: AttendanceWidgetProps) {
                         <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
                         <div className="text-xs text-amber-800">
                             <p className="font-bold">You are checking in late.</p>
-                            <p>Shift starts at {LATE_THRESHOLD_HOUR}:{LATE_THRESHOLD_MINUTE} AM.</p>
+                            <p>Shift starts at {lateThresholdHour}:{lateThresholdMinute} AM.</p>
                         </div>
                     </div>
                   )}

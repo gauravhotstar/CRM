@@ -185,16 +185,25 @@ export function AdminAttendanceDashboard() {
   useEffect(() => {
     if (!tenantId) return;
 
-    const fetchOffices = async () => {
-      // 🔴 FILTER OFFICES BY TENANT
-      const { data, error } = await supabase.from('office_locations').select('*').eq('tenant_id', tenantId);
-      if (!error && data && data.length > 0) {
-        setOffices(data);
+    const fetchSettings = async () => {
+      const { data, error } = await supabase.from('attendance_settings').select('*').eq('tenant_id', tenantId).maybeSingle();
+      if (!error && data) {
+         if (data.office_location) {
+             const parsedOffices = typeof data.office_location === 'string' ? JSON.parse(data.office_location) : data.office_location;
+             setOffices(Array.isArray(parsedOffices) && parsedOffices.length > 0 ? parsedOffices : [{ id: 'default-1', name: 'HQ (Default)', lat: 12.9716, lng: 77.5946, radius: 0.5 }]);
+         } else {
+             setOffices([{ id: 'default-1', name: 'HQ (Default)', lat: 12.9716, lng: 77.5946, radius: 0.5 }]);
+         }
+         if (data.work_hours_start) {
+             const [h, m] = data.work_hours_start.split(':');
+             setLateThresholdHour(parseInt(h));
+             setLateThresholdMinute(parseInt(m));
+         }
       } else {
         setOffices([{ id: 'default-1', name: 'HQ (Default)', lat: 12.9716, lng: 77.5946, radius: 0.5 }]);
       }
     };
-    fetchOffices();
+    fetchSettings();
   }, [tenantId, supabase]);
 
   // --- REAL-TIME SUBSCRIPTION ---
@@ -549,25 +558,45 @@ export function AdminAttendanceDashboard() {
     }
   };
 
+  const saveAttendanceSettings = async (updates: any) => {
+      const { data: existing } = await supabase.from('attendance_settings').select('id').eq('tenant_id', tenantId).maybeSingle();
+      if (existing) {
+          const { error } = await supabase.from('attendance_settings').update(updates).eq('id', existing.id);
+          if (error) throw error;
+      } else {
+          const { error } = await supabase.from('attendance_settings').insert([{ tenant_id: tenantId, ...updates }]);
+          if (error) throw error;
+      }
+  };
+
   const addOffice = async () => {
     if (!newOfficeName || !newOfficeLat || !newOfficeLng) return toast.error("Please fill in all fields");
 
-    // 🔴 Inject Tenant ID to isolate Office Location
-    const newOffice = { tenant_id: tenantId, name: newOfficeName, lat: parseFloat(newOfficeLat), lng: parseFloat(newOfficeLng), radius: 0.5 };
-    const { data, error } = await supabase.from('office_locations').insert([newOffice]).select().single();
-    if (error) { toast.error("Failed to save office"); return; }
-
-    setOffices([...offices, data]);
-    setNewOfficeName(""); setNewOfficeLat(""); setNewOfficeLng("");
-    toast.success("Office location added");
+    const newOffice = { id: crypto.randomUUID(), name: newOfficeName, lat: parseFloat(newOfficeLat), lng: parseFloat(newOfficeLng), radius: 0.5 };
+    const newOffices = [...offices, newOffice];
+    
+    try {
+       await saveAttendanceSettings({ office_location: newOffices });
+       setOffices(newOffices);
+       setNewOfficeName(""); setNewOfficeLat(""); setNewOfficeLng("");
+       toast.success("Office location added");
+    } catch(err) {
+       toast.error("Failed to save office");
+    }
   };
 
   const removeOffice = async (id: string) => {
     const prevOffices = [...offices];
-    setOffices(offices.filter(o => o.id !== id));
-    const { error } = await supabase.from('office_locations').delete().eq('id', id);
-    if (error) { setOffices(prevOffices); toast.error("Failed to delete office"); } 
-    else toast.success("Office removed");
+    const newOffices = offices.filter(o => o.id !== id);
+    setOffices(newOffices);
+    
+    try {
+       await saveAttendanceSettings({ office_location: newOffices });
+       toast.success("Office removed");
+    } catch(err) {
+       setOffices(prevOffices);
+       toast.error("Failed to delete office");
+    }
   };
 
   const handleEdit = (record: AttendanceRecord) => {
@@ -1351,11 +1380,17 @@ export function AdminAttendanceDashboard() {
               <div className="flex gap-4 items-center bg-slate-50/50 dark:bg-slate-950/20 p-4 rounded-xl border border-slate-100 dark:border-slate-855">
                  <div className="flex-1 space-y-1.5">
                     <span className="text-[10px] font-bold uppercase text-slate-400">Hours slider</span>
-                    <Slider value={[lateThresholdHour]} min={7} max={11} step={1} onValueChange={(v) => setLateThresholdHour(v[0])} />
+                    <Slider value={[lateThresholdHour]} min={7} max={11} step={1} 
+                        onValueChange={(v) => setLateThresholdHour(v[0])} 
+                        onValueCommit={(v) => saveAttendanceSettings({ work_hours_start: `${v[0].toString().padStart(2, '0')}:${lateThresholdMinute.toString().padStart(2, '0')}:00` })} 
+                    />
                  </div>
                  <div className="flex-1 space-y-1.5">
                     <span className="text-[10px] font-bold uppercase text-slate-400">Minutes slider</span>
-                    <Slider value={[lateThresholdMinute]} min={0} max={59} step={5} onValueChange={(v) => setLateThresholdMinute(v[0])} />
+                    <Slider value={[lateThresholdMinute]} min={0} max={59} step={5} 
+                        onValueChange={(v) => setLateThresholdMinute(v[0])} 
+                        onValueCommit={(v) => saveAttendanceSettings({ work_hours_start: `${lateThresholdHour.toString().padStart(2, '0')}:${v[0].toString().padStart(2, '0')}:00` })} 
+                    />
                  </div>
               </div>
             </div>
