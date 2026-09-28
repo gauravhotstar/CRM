@@ -262,10 +262,7 @@ export function AdminAttendanceDashboard() {
           .eq("date", yesterdayStr)
           .not("check_in", "is", null)
           .is("check_out", null),
-        supabase.from("holidays").select("id, date, name, type, is_working_day")
-          .eq('tenant_id', tenantId)
-          .gte("date", format(startOfMonth(dateRange.start), "yyyy-MM-dd"))
-          .lte("date", format(endOfMonth(dateRange.end), "yyyy-MM-dd")),
+        supabase.from("holidays").select("id, date, name, type, is_working_day").eq('tenant_id', tenantId),
         supabase.from("employee_broadcasts").select("id, user_id, message, is_active").eq('tenant_id', tenantId)
       ]);
 
@@ -1427,7 +1424,10 @@ export function AdminAttendanceDashboard() {
               </div>
               
               <div className="space-y-2 mb-3 max-h-[150px] overflow-y-auto border border-slate-100 dark:border-slate-850/80 rounded-xl p-2.5 bg-slate-50/30 dark:bg-slate-950/15">
-                {holidays.map(holiday => (
+                {holidays
+                  .filter(h => h.date >= format(new Date(), "yyyy-MM-dd"))
+                  .sort((a, b) => a.date.localeCompare(b.date))
+                  .map(holiday => (
                   <div key={holiday.id} className="flex justify-between items-center text-xs bg-white dark:bg-slate-900 p-2.5 rounded-xl shadow-3xs border border-slate-100 dark:border-slate-855">
                     <div>
                       <p className="font-bold text-slate-850 dark:text-slate-255">
