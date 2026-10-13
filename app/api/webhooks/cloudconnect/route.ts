@@ -107,6 +107,7 @@ async function handleWebhook(req: Request) {
     const rawDuration = getParam('call_duration') || getParam('CallDuration') || getParam('Duration') || getParam('duration') || '0';
     const dtmfInput = getParam('dtmf_input') || getParam('digit') || getParam('AudioInput') || getParam('Input') || '';
     const recordingUrl = getParam('recording_url') || getParam('AudioFile') || getParam('RecordingUrl') || '';
+    const campaignName = getParam('CampaignName') || getParam('campaignName') || '';
 
     // =========================================================================
     // SPAM & LOAD PREVENTION: Drop intermediate/noisy events IMMEDIATELY
@@ -114,9 +115,31 @@ async function handleWebhook(req: Request) {
     // We KEEP "ringing" (or "ring") because it's required for Agent Screen Pops.
     // We KEEP "completed" or "hangup" for IVR feedback processing.
     // NOTE: If dtmfInput is present, we NEVER ignore the webhook, regardless of status.
-    const IGNORED_STATUSES = ['dial', 'dialing', 'progress', 'in-progress', 'initiated', 'queued', 'on call', 'on-call', 'up', 'answered'];
-    if (IGNORED_STATUSES.includes(callStatus.toLowerCase()) && !dtmfInput) {
-        console.warn(`[Ozonetel Webhook] Dropping intermediate/spammy status instantly: ${callStatus}`);
+    const isRinging = callStatus.toLowerCase() === 'ring' || callStatus.toLowerCase() === 'ringing';
+
+    // 1. IVR Campaign blasts: If no DTMF digit was pressed, drop INSTANTLY in 0ms!
+    // (In IVR blasts there is no agent on the line, no screen pop needed, and no lead can be created without a digit).
+    if (campaignName && !dtmfInput) {
+        console.warn(`[Ozonetel Webhook] Dropping IVR campaign call without DTMF digit instantly: ${callStatus} (Campaign: ${campaignName})`);
+        return NextResponse.json({ success: true, message: `Ignored IVR campaign call without DTMF digit: ${callStatus}` });
+    }
+
+    // 2. Drop intermediate / non-actionable statuses (unless DTMF digit is present)
+    const IGNORED_STATUSES = [
+      'dial', 'dialing', 'progress', 'in-progress', 'initiated', 'queued', 
+      'on call', 'on-call', 'up', 'answered', 'notanswered', 'not answered', 
+      'not_answered', 'busy', 'failed', 'rejected', 'abandoned', 'noanswer', 
+      'no-answer', 'cancelled', 'missed', 'drop'
+    ];
+    if (IGNORED_STATUSES.includes(callStatus.toLowerCase()) && !dtmfInput && !extensionNumber && !isRinging) {
+        console.warn(`[Ozonetel Webhook] Dropping non-actionable status instantly: ${callStatus}`);
+        return NextResponse.json({ success: true, message: `Ignored status: ${callStatus}` });
+    }
+
+    // 3. Drop noisy in-call / dialing statuses even if extensionNumber is present (keep only ringing and completed)
+    const NOISY_AGENT_STATUSES = ['dial', 'dialing', 'progress', 'in-progress', 'initiated', 'queued', 'on call', 'on-call', 'up'];
+    if (NOISY_AGENT_STATUSES.includes(callStatus.toLowerCase()) && !dtmfInput) {
+        console.warn(`[Ozonetel Webhook] Dropping intermediate agent status instantly: ${callStatus}`);
         return NextResponse.json({ success: true, message: `Ignored status: ${callStatus}` });
     }
 
@@ -144,7 +167,6 @@ async function handleWebhook(req: Request) {
 
         // ===== PRIORITY 1: Extract Tenant UUID directly from CampaignName =====
         // Campaign name format: IVRBlast_7965373445_576a6280-a9a2-425c-b1dd-eabfff3a00c6
-        const campaignName = getParam('CampaignName') || getParam('campaignName') || '';
         const uuidFromCampaign = campaignName.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
         if (uuidFromCampaign) {
             TARGET_IVR_TENANT_ID = uuidFromCampaign;
@@ -357,7 +379,6 @@ async function handleWebhook(req: Request) {
     }
 
     // 2. Handle RINGING (Screen Pop)
-    const isRinging = callStatus.toLowerCase() === 'ring' || callStatus.toLowerCase() === 'ringing';
     if (isRinging) {
         console.warn(`[Ozonetel Webhook] Processing Ringing event for screen pop.`);
         let ringAgentId = null;
