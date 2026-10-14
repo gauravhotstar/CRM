@@ -252,6 +252,18 @@ async function handleWebhook(req: Request) {
         }
     }
 
+    // If an existing lead exists and DTMF digit is received, fire the template for tenant 576a6280-a9a2-425c-b1dd-eabfff3a00c6
+    if (lead && dtmfInput) {
+        console.warn(`[Ozonetel Webhook] Existing lead pressed DTMF: ${callerNumber}, digit: ${dtmfInput}`);
+        const effectiveTenantId = lead.tenant_id || TARGET_IVR_TENANT_ID;
+        if (effectiveTenantId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6') {
+            console.warn(`[Ozonetel Webhook] Firing WhatsApp 'application_status_update' for existing DTMF lead in tenant ${effectiveTenantId}: ${callerNumber}`);
+            sendStatusUpdateMessage(lead.id, callerNumber, effectiveTenantId).catch(err => {
+                console.error("[Ozonetel Webhook] Failed to send WhatsApp status update for existing lead:", err);
+            });
+        }
+    }
+
     // If no lead exists but we got DTMF, create one & assign
     if (!lead && dtmfInput) {
         console.warn(`[Ozonetel Webhook] Auto-creating DTMF Lead for phone: ${callerNumber}, digit: ${dtmfInput}`);

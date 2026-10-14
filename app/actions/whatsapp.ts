@@ -348,6 +348,23 @@ export async function sendStatusUpdateMessage(leadId: string, customerPhone: str
       "button1": "Submit Details"
     });
 
+    // Deduplication check: Avoid sending duplicate templates to the same lead within 5 minutes
+    if (leadId) {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: recentMsgs } = await supabase
+        .from("chat_messages")
+        .select("id")
+        .eq("lead_id", leadId)
+        .eq("message_type", "template")
+        .gte("created_at", fiveMinutesAgo)
+        .limit(1);
+
+      if (recentMsgs && recentMsgs.length > 0) {
+        console.warn(`[Auto WhatsApp] Skipping duplicate send: template was already sent to lead ${leadId} within 5m.`);
+        return { success: true, message: "Duplicate suppressed (sent recently)" };
+      }
+    }
+
     // Send it using the REAL Template API endpoint
     const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName, buttonsPayload);
 

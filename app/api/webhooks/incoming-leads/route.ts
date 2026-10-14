@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { sendStatusUpdateMessage } from "@/app/actions/whatsapp";
 
 export const dynamic = 'force-dynamic';
 
@@ -103,6 +104,13 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ [INCOMING LEAD WEBHOOK] Successfully saved lead ${cleanPhone} for ${orgName}.`);
     
+    if (newLead && orgId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6') {
+        console.log(`🚀 [INCOMING LEAD] Firing WhatsApp 'application_status_update' for lead ${newLead.id}`);
+        sendStatusUpdateMessage(newLead.id, cleanPhone, orgId).catch(err => {
+            console.error("[INCOMING LEAD] Failed to send auto WhatsApp:", err);
+        });
+    }
+
     return NextResponse.json({ 
         status: "success", 
         message: "Lead received and saved.",

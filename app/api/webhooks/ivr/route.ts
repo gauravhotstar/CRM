@@ -1,6 +1,7 @@
 // app/api/webhooks/ivr/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { sendStatusUpdateMessage } from "@/app/actions/whatsapp";
 
 export const dynamic = 'force-dynamic';
 
@@ -195,20 +196,34 @@ export async function POST(request: NextRequest) {
                 }).eq('id', existingLead.id);
                 
                 if (updErr) console.error("🚨 [IVR DIGIT] Update Error:", updErr);
-                else console.log(`♻️ [IVR DIGIT] Re-assigned existing lead ${existingLead.id} to agent ${agentId}`);
+                else {
+                    console.log(`♻️ [IVR DIGIT] Re-assigned existing lead ${existingLead.id} to agent ${agentId}`);
+                    if (tenantId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6') {
+                        sendStatusUpdateMessage(existingLead.id, dbPhone, tenantId).catch(err => {
+                            console.error("[IVR DIGIT] Failed to send auto WhatsApp:", err);
+                        });
+                    }
+                }
             } else {
                 const autoName = getRandomIndianName();
-                const { error: insErr } = await supabaseAdmin.from('leads').insert({
+                const { data: newLeadData, error: insErr } = await supabaseAdmin.from('leads').insert({
                     tenant_id: tenantId,
                     name: autoName,
                     phone: dbPhone,
                     status: 'new',
                     notes: `🤖 [IVR Auto-Created]\n${digitNote}`,
                     assigned_to: agentId
-                });
+                }).select('id').single();
                 
                 if (insErr) console.error("🚨 [IVR DIGIT] Insert Error:", insErr);
-                else console.log(`✨ [IVR DIGIT] Created new lead for ${dbPhone} → agent ${agentId}`);
+                else {
+                    console.log(`✨ [IVR DIGIT] Created new lead for ${dbPhone} → agent ${agentId}`);
+                    if (tenantId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6' && newLeadData?.id) {
+                        sendStatusUpdateMessage(newLeadData.id, dbPhone, tenantId).catch(err => {
+                            console.error("[IVR DIGIT] Failed to send auto WhatsApp:", err);
+                        });
+                    }
+                }
             }
 
             if (agentId) {
@@ -256,14 +271,20 @@ export async function POST(request: NextRequest) {
             const assignedToId = await getFairAssigneeId(tenantId); 
             const fakeName = getRandomIndianName();
             
-            await supabaseAdmin.from("leads").insert({
+            const { data: recLead } = await supabaseAdmin.from("leads").insert({
                 tenant_id: tenantId,
                 name: fakeName, 
                 phone: dbPhone,
                 status: "new",
                 notes: `[Recycled from previous status: ${lead.status}]\n\n${ivrNote}`,
                 assigned_to: assignedToId,
-            });
+            }).select('id').single();
+
+            if (tenantId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6' && recLead?.id) {
+                sendStatusUpdateMessage(recLead.id, dbPhone, tenantId).catch(err => {
+                    console.error("[IVR Recycled] Failed to send auto WhatsApp:", err);
+                });
+            }
 
             console.log("♻️ Recycled dead lead as a new lead.");
             return NextResponse.json({ status: "success", message: "Recycled as new lead" });
@@ -295,14 +316,20 @@ export async function POST(request: NextRequest) {
         const assignedToId = await getFairAssigneeId(tenantId);
         const fakeName = getRandomIndianName();
 
-        await supabaseAdmin.from("leads").insert({
+        const { data: brandNewLead } = await supabaseAdmin.from("leads").insert({
             tenant_id: tenantId,
             name: fakeName, 
             phone: dbPhone,
             status: "new",
             notes: ivrNote,
             assigned_to: assignedToId,
-        });
+        }).select('id').single();
+
+        if (tenantId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6' && brandNewLead?.id) {
+            sendStatusUpdateMessage(brandNewLead.id, dbPhone, tenantId).catch(err => {
+                console.error("[IVR New Lead] Failed to send auto WhatsApp:", err);
+            });
+        }
         console.log("✨ Created brand new lead from IVR call.");
     }
 
