@@ -55,16 +55,16 @@ async function triggerWhatsAppTemplate(leadId, phone, tenantId) {
       return;
     }
 
-    // 2. Fetch tenant credentials
-    const { data: orgData } = await supabase
-      .from('organizations')
-      .select('fonada_userid, fonada_password, fonada_wabanumber')
-      .eq('id', tenantId)
-      .single();
+    // 2. Fetch tenant credentials from tenant_settings
+    const { data: settings } = await supabase
+      .from('tenant_settings')
+      .select('fonada_userid, fonada_password, fonada_waba_number')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
 
-    const fonadaUser = orgData?.fonada_userid || process.env.FONADA_USERID || '101340';
-    const fonadaPass = orgData?.fonada_password || process.env.FONADA_PASSWORD || 'Ozonetel@2024';
-    const fonadaWaba = orgData?.fonada_wabanumber || process.env.FONADA_WABANUMBER || '918069641777';
+    const fonadaUser = settings?.fonada_userid || process.env.FONADA_USERID || 'bankscart';
+    const fonadaPass = settings?.fonada_password || process.env.FONADA_PASSWORD;
+    const fonadaWaba = settings?.fonada_waba_number || process.env.FONADA_WABANUMBER || '919278057904';
 
     const apiUrl = 'https://waba.fonada.com/api/SendMsg/template';
     const templateName = 'application_status_update';
@@ -91,25 +91,31 @@ async function triggerWhatsAppTemplate(leadId, phone, tenantId) {
     const data = await res.json();
     console.log(`[Auto WA] Fonada Response for ${safePhone}:`, JSON.stringify(data));
 
+    const isSuccess = Boolean(data.msgId || data.status === 'success');
     const textMessage = `*Application Status*\n\n*Hello!* Thank you for speaking with our *verification team.*\n\nYour initial *phone verification is successfully completed*. To keep your loan application moving forward, *please submit the remaining pending details* in your secure portal.\n\nLet us know if you need any assistance with the upload!\n\n_ICICI Bank Loan Desk_\n\n[Submit Details] [Call phone number]`;
 
     await supabase.from('chat_messages').insert({
+      tenant_id: tenantId,
       lead_id: leadId,
       phone_number: safePhone,
       direction: 'outbound',
       message_type: 'template',
       content: textMessage,
       fonada_message_id: data.msgId || null,
-      status: 'sent'
+      status: isSuccess ? 'sent' : 'failed'
     });
 
-    await supabase.from('leads').update({
-      last_message_at: new Date().toISOString(),
-      last_message_content: 'Sent Application Status Update Template',
-      last_message_type: 'outbound'
-    }).eq('id', leadId);
+    if (isSuccess) {
+      await supabase.from('leads').update({
+        last_message_at: new Date().toISOString(),
+        last_message_content: 'Sent Application Status Update Template',
+        last_message_type: 'outbound'
+      }).eq('id', leadId);
 
-    console.log(`✅ [Auto WA] Successfully sent application_status_update to ${safePhone} (Lead ID: ${leadId})`);
+      console.log(`✅ [Auto WA] Successfully sent application_status_update to ${safePhone} (Lead ID: ${leadId}, MsgId: ${data.msgId})`);
+    } else {
+      console.error(`❌ [Auto WA] Fonada rejected template for ${safePhone} (Lead ID: ${leadId}): ${JSON.stringify(data)}`);
+    }
   } catch (err) {
     console.error(`❌ [Auto WA] Error sending template for lead ${leadId}:`, err);
   }
