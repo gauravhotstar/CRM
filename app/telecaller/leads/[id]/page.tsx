@@ -558,10 +558,10 @@ export default function LeadDetailsPage({ params }: { params: { id: string } }) 
                         />
                     )}
 
-                    {/* EXISTING WHATSAPP PANEL */}
-                    <div className="mb-6">
+                    {/* EXISTING WHATSAPP PANEL - Temporarily Turned Off */}
+                    {/* <div className="mb-6">
                        <WhatsAppChat leadId={lead.id} phone={lead.phone} />
-                    </div>
+                    </div> */}
 
                     {/* ✅ REPLACED THE OLD STATUS CARD WITH LeadStatusUpdater ✅ */}
                     <LeadStatusUpdater

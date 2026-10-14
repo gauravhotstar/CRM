@@ -19,6 +19,9 @@ interface ChatMessage {
 }
 
 export function WhatsAppChat({ leadId, phone }: { leadId: string, phone: string }) {
+  // Temporarily turned off in telecaller panel
+  return null;
+
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState("")
   const [loading, setLoading] = useState(true)

@@ -44,6 +44,25 @@ interface ChatMessage {
 }
 
 export default function AdminWhatsAppPanel() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[65vh] text-center p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mx-auto max-w-2xl mt-12">
+      <div className="bg-amber-50 dark:bg-amber-950/40 p-4 rounded-2xl mb-4 border border-amber-200 dark:border-amber-800">
+        <MessageSquare className="h-10 w-10 text-amber-600 dark:text-amber-400" />
+      </div>
+      <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">
+        Messages Temporarily Disabled
+      </h2>
+      <p className="text-slate-500 dark:text-slate-400 text-sm max-w-md leading-relaxed mb-6">
+        WhatsApp message viewing has been temporarily turned off in the telecaller panel by the administrator.
+      </p>
+      <Link href="/telecaller">
+        <Button variant="outline" className="gap-2">
+          <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+        </Button>
+      </Link>
+    </div>
+  )
+
   const supabase = createClient()
   
   // State

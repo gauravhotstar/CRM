@@ -588,14 +588,6 @@ export default function TelecallerDashboard() {
                 variant="ghost" 
                 size="sm" 
                 className="w-full justify-start text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 h-8.5 rounded-lg px-2.5"
-                onClick={() => { router.push("/telecaller/chat"); setIsFabOpen(false) }}
-              >
-                <MessageSquare className="h-3.5 w-3.5 mr-2 text-emerald-500" /> WhatsApp Chat
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="w-full justify-start text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 h-8.5 rounded-lg px-2.5"
                 onClick={() => { router.push("/telecaller/calls"); setIsFabOpen(false) }}
               >
                 <Phone className="h-3.5 w-3.5 mr-2 text-blue-500" /> Dialer logs
@@ -631,8 +623,8 @@ export default function TelecallerDashboard() {
           <Button variant="ghost" size="sm" className="flex flex-col items-center gap-1 text-[9px] font-bold text-slate-450 dark:text-slate-400 h-auto p-0" onClick={() => router.push("/telecaller/tasks")}>
             <ListTodo className="h-5 w-5" /> Tasks
           </Button>
-          <Button variant="ghost" size="sm" className="flex flex-col items-center gap-1 text-[9px] font-bold text-slate-450 dark:text-slate-400 h-auto p-0" onClick={() => router.push("/telecaller/chat")}>
-            <MessageCircle className="h-5 w-5" /> WhatsApp
+          <Button variant="ghost" size="sm" className="flex flex-col items-center gap-1 text-[9px] font-bold text-slate-450 dark:text-slate-400 h-auto p-0" onClick={() => router.push("/telecaller/calls")}>
+            <Phone className="h-5 w-5" /> Calls
           </Button>
         </div>
 

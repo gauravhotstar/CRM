@@ -53,7 +53,7 @@ const navigation = [
   { name: "Notes", href: "/telecaller/notes", icon: StickyNote, module: "core" },
   { name: "Attendance", href: "/telecaller/attendance", icon: UserCheck, module: "core" },
   { name: "Leave", href: "/telecaller/leave", icon: CalendarOff, module: "core" },
-  { name: "Whatsapp", href: "/telecaller/chat", icon: MessageCircle, module: "core" },
+  // { name: "Whatsapp", href: "/telecaller/chat", icon: MessageCircle, module: "core" }, // Temporarily disabled
   { name: "Logins", href: "/telecaller/logins", icon: Fingerprint, module: "core" },
   { name: "Files", href: "/telecaller/global-search", icon: UserSearch, module: "core" },
 ]
