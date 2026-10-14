@@ -345,7 +345,7 @@ async function handleWebhook(req: Request) {
             }
 
             // 🚀 FIRE WHATSAPP STATUS UPDATE TEMPLATE IMMEDIATELY
-            console.warn(`[Ozonetel Webhook] Firing WhatsApp 'status_update' for new DTMF lead: ${callerNumber}`);
+            console.warn(`[Ozonetel Webhook] Firing WhatsApp 'application_status_update' for new DTMF lead: ${callerNumber}`);
             // We don't await this so it doesn't block the webhook response
             sendStatusUpdateMessage(createdLead.id, callerNumber, createdLead.tenant_id).catch(err => {
                 console.error("[Ozonetel Webhook] Failed to send WhatsApp status update:", err);

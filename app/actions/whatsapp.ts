@@ -330,21 +330,20 @@ export async function sendCallbackReminderTemplate(leadId: string, customerPhone
 }
 
 // ============================================================================
-// 6. SEND STATUS UPDATE TEMPLATE (For IVR DTMF Leads)
+// 6. SEND APPLICATION STATUS UPDATE TEMPLATE (For IVR DTMF Leads)
 // ============================================================================
 export async function sendStatusUpdateMessage(leadId: string, customerPhone: string, tenantId: string | null = null) {
   try {
     const supabase = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
     const creds = await getTenantWaCredentials(tenantId);
 
-    // This is the actual Template Name from your Meta Dashboard
-    // If the template name is different than 'status_update', change it here!
-    const templateName = "status_update"; 
+    // This is the actual Template Name from your Meta WhatsApp Manager
+    const templateName = "application_status_update"; 
 
-    // We still define the text so it can be logged visually in the CRM Chat history
-    const textMessage = `Action Required\n\nHi,\n\nThis is a required update regarding your *ICICI Bank application*.\n\nThe initial phone verification stage is complete. To continue processing your file, mandatory details are *currently pending* in your secure portal.\n\n*Please submit the required information below*.\n\n[Submit Details] [Call phone number]`;
+    // Visual log for CRM Chat history (Header + Body + Footer + Buttons)
+    const textMessage = `*Application Status*\n\n*Hello!* Thank you for speaking with our *verification team.*\n\nYour initial *phone verification is successfully completed*. To keep your loan application moving forward, *please submit the remaining pending details* in your secure portal.\n\nLet us know if you need any assistance with the upload!\n\n_ICICI Bank Loan Desk_\n\n[Submit Details] [Call phone number]`;
 
-    // Define the required button payload for the interactive template
+    // Define the button payload for the interactive template
     const buttonsPayload = JSON.stringify({
       "button1": "Submit Details"
     });
@@ -361,13 +360,13 @@ export async function sendStatusUpdateMessage(leadId: string, customerPhone: str
 
     await supabase.from("leads").update({ 
       last_message_at: new Date().toISOString(),
-      last_message_content: "Sent Status Update Template",
+      last_message_content: "Sent Application Status Update Template",
       last_message_type: 'outbound'
     }).eq("id", leadId);
     
     return { success: true };
   } catch (error: any) {
-    console.error("Status Update WA Error:", error);
+    console.error("Application Status Update WA Error:", error);
     return { success: false, error: error.message };
   }
 }
