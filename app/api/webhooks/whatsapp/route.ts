@@ -225,9 +225,10 @@ export async function POST(request: NextRequest) {
                   textLower.includes("i want to apply personal loan");
               
               if (isDocRequest) {
-                  const replyMsg = `Thank you for your interest in a Personal Loan. To proceed with your application, please share the following documents:\n\n*✅ Aadhar Card*\n*✅ PAN Card*\n*✅ One month's payslip*\n\n*You can upload them here or reply to this message* with the attachments. We'll begin the verification process right away.`;
-                  await sendFonadaMessage(customerPhone, replyMsg, fonadaUser, fonadaPass, fonadaWaba, lead.id, tenantId);
-                  return NextResponse.json({ status: "success", action: "quick_reply_docs" });
+                  // NOTE: Fonada's dashboard already sends this exact auto-reply via its "Default Response" feature.
+                  // Sending it here via sendFonadaMessage causes the message to be sent twice to the customer.
+                  console.log(`[WA Quick Reply] Document request received from ${customerPhone}. Handled by Fonada Default Response.`);
+                  return NextResponse.json({ status: "success", action: "quick_reply_docs_handled_by_fonada" });
               }
 
               const isInterestRequest = 
@@ -383,9 +384,9 @@ Communication Style:
               const isHelp = textLower.includes("help") || textLower.includes("complete") || textLower.includes("interested");
 
               if (isPersonalLoan) {
-                const plMessage = `Thank you for your interest. Please share the following documents:\n✅ *Aadhar Card*\n✅ *PAN Card*\n✅ *One month's payslip*\n\nYou can upload them here.`;
-                await sendFonadaMessage(customerPhone, plMessage, fonadaUser, fonadaPass, fonadaWaba, lead.id, tenantId);
-                return NextResponse.json({ status: "success", action: "pl_bot_reply" });
+                // Handled by Fonada Default Response
+                console.log(`[WA Quick Reply] Personal loan inquiry received from ${customerPhone}. Handled by Fonada Default Response.`);
+                return NextResponse.json({ status: "success", action: "pl_handled_by_fonada" });
               }
 
               if (isSpeakToAgent || isHelp) {
