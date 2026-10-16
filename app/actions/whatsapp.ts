@@ -195,7 +195,9 @@ export async function sendMissedCallMessage(leadId: string, customerPhone: strin
     const textMessage = `[ALERT]\n\n⚠️ We tried calling you but *couldn't connect*.\n\nYour loan application is pending due to missing documents. To avoid processing delays, *please share* the following *immediately*:\n\n*• PAN Card*\n*• Aadhaar Card*\n*• Latest Payslip*\n\n[I Have Uploaded]`;
 
     const buttonsPayload = JSON.stringify({
-      "button1": "I Have Uploaded"
+      "button1": "I Have Uploaded",
+      "button2": "Call Me Back",
+      "button3": "Need Help"
     });
     
     const customerName = lead?.name?.split(' ')[0] || "Customer";

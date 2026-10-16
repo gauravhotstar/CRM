@@ -145,7 +145,7 @@ async function handleWebhook(req: Request) {
 
         // ===== PRIORITY 1: Extract Tenant UUID directly from CampaignName =====
         // Campaign name format: IVRBlast_7965373445_576a6280-a9a2-425c-b1dd-eabfff3a00c6
-        const campaignName = getParam('CampaignName') || getParam('campaignName') || '';
+        const campaignName = getParam('CampaignName') || getParam('campaignName') || getParam('Camp') || getParam('camp') || getParam('campaign') || getParam('Campaign') || '';
         const uuidFromCampaign = campaignName.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
         if (uuidFromCampaign) {
             TARGET_IVR_TENANT_ID = uuidFromCampaign;
@@ -162,7 +162,7 @@ async function handleWebhook(req: Request) {
             getParam('dnis'), getParam('DNIS'),
             getParam('clid'), getParam('caller_id'), getParam('CallerID'),
             getParam('Destination'), getParam('destination'), getParam('DialedNumber'),
-            getParam('CampaignName') ? getParam('CampaignName').match(/\d{10}/)?.[0] : null
+            campaignName ? campaignName.match(/\d{10,12}/)?.[0] : null
         ].filter(Boolean).map(n => String(n).replace(/\D/g, '').slice(-10));
 
         const uniqueDids = Array.from(new Set(potentialDids)).filter(n => n.length === 10);
@@ -171,7 +171,7 @@ async function handleWebhook(req: Request) {
         console.warn(`🔍 [DID-DEBUG] uniqueDids (10-digit):`, uniqueDids);
         console.warn(`🔍 [DID-DEBUG] Did param:`, getParam('Did'));
         console.warn(`🔍 [DID-DEBUG] DialDID param:`, getParam('DialDID'));
-        console.warn(`🔍 [DID-DEBUG] CampaignName:`, getParam('CampaignName'));
+        console.warn(`🔍 [DID-DEBUG] CampaignName:`, campaignName);
         console.warn(`🔍 [DID-DEBUG] Initial TARGET_IVR_TENANT_ID:`, TARGET_IVR_TENANT_ID);
 
         if (uniqueDids.length > 0) {

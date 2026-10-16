@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { notFound } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +20,9 @@ import { contactManager } from "@/lib/device/contacts"
 import { toast } from "sonner"
 
 export default function PWADemoPage() {
+  if (process.env.NODE_ENV === "production") {
+    notFound()
+  }
   const [showSplash, setShowSplash] = useState(false)
   const [showCamera, setShowCamera] = useState(false)
   const [showLocation, setShowLocation] = useState(false)

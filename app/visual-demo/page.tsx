@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import { notFound } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AdminMasterDashboard, HierarchyManager, AttendanceMonitor } from "@/components/visuals/admin-visuals"
 import { TelecallerMyDay, LeadExecutionScreen } from "@/components/visuals/telecaller-visuals"
@@ -10,6 +11,10 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
 export default function VisualDemoPage() {
+    if (process.env.NODE_ENV === "production") {
+        notFound()
+    }
+
     return (
         <div className="min-h-screen bg-slate-100 p-4 md:p-8">
             <div className="max-w-7xl mx-auto space-y-6">

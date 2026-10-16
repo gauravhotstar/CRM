@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     // Get the creator's role from the DB
     const { data: adminCheck } = await supabase
       .from("users")
-      .select("role")
+      .select("role, tenant_id")
       .eq("id", currentUser.id)
       .single();
 
@@ -48,7 +48,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log("👉 Incoming Data:", body); // Debug log
 
-    const { email, password, full_name, phone, role, manager_id, allow_wfh } = body;
+    const { email, password, full_name, phone, role, manager_id, allow_wfh, tenant_id } = body;
+    const effectiveTenantId = adminCheck.role === 'super_admin' ? (tenant_id || adminCheck.tenant_id) : adminCheck.tenant_id;
 
     // 3. VALIDATE ROLE
     // We strictly check against your ALLOWED database roles
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
         role: roleToSave, // <--- This now matches your DB constraint perfectly
         manager_id: manager_id,
         allow_wfh: Boolean(allow_wfh),
+        tenant_id: effectiveTenantId,
         created_at: new Date().toISOString(),
       });
 
