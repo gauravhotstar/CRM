@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { createClient as createServiceClient } from "@supabase/supabase-js"
+import { parseIvrMeta, formatIvrMeta } from "@/lib/ivr-tracker"
 
 const getSupabaseAdmin = () => createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,13 +21,14 @@ export async function submitIvrUploadRequest(data: { campaignName: string, didNu
         const { data: org } = await supabase.from('organizations').select('name').eq('id', profile.tenant_id).single()
 
         const supabaseAdmin = getSupabaseAdmin()
+        const initialNotes = formatIvrMeta(data.notes || '', null, 0)
         const { error: insertError } = await supabaseAdmin.from('ivr_upload_requests').insert({
             tenant_id: profile.tenant_id,
             uploaded_by: user.id,
             campaign_name: data.campaignName,
             did_number: data.didNumber,
             total_contacts: data.phoneNumbers.length,
-            notes: data.notes,
+            notes: initialNotes,
             status: 'pending'
         })
         if (insertError) throw insertError
@@ -55,7 +57,7 @@ export async function submitIvrUploadRequest(data: { campaignName: string, didNu
     }
 }
 
-// Fetch history using admin client to bypass RLS
+// Fetch history using admin client to bypass RLS, with 5-minute idle auto-completion
 export async function getIvrUploadHistory(tenantId: string) {
     const supabaseAdmin = getSupabaseAdmin()
     const { data, error } = await supabaseAdmin
@@ -65,7 +67,33 @@ export async function getIvrUploadHistory(tenantId: string) {
         .order('created_at', { ascending: false })
         .limit(20)
     if (error) throw new Error(error.message)
-    return data || []
+
+    const now = Date.now()
+    const fiveMinutes = 5 * 60 * 1000
+
+    const mapped = (data || []).map((item: any) => {
+        const meta = parseIvrMeta(item.notes)
+        item.meta = meta
+
+        // If request is running but no leads have arrived in the last 5 minutes -> complete it
+        if (item.status === 'running') {
+            if (meta.last_lead_at) {
+                const elapsed = now - new Date(meta.last_lead_at).getTime()
+                if (elapsed >= fiveMinutes) {
+                    item.status = 'completed'
+                    // Lazily persist to DB without blocking response
+                    supabaseAdmin
+                        .from('ivr_upload_requests')
+                        .update({ status: 'completed' })
+                        .eq('id', item.id)
+                        .then()
+                }
+            }
+        }
+        return item
+    })
+
+    return mapped
 }
 
 // Super admin: get all upload requests across all tenants
@@ -83,7 +111,28 @@ export async function getAllIvrUploadRequests() {
         .order('created_at', { ascending: false })
         .limit(100)
     if (error) throw new Error(error.message)
-    return data || []
+
+    const now = Date.now()
+    const fiveMinutes = 5 * 60 * 1000
+
+    const mapped = (data || []).map((item: any) => {
+        const meta = parseIvrMeta(item.notes)
+        item.meta = meta
+
+        if (item.status === 'running' && meta.last_lead_at) {
+            if (now - new Date(meta.last_lead_at).getTime() >= fiveMinutes) {
+                item.status = 'completed'
+                supabaseAdmin
+                    .from('ivr_upload_requests')
+                    .update({ status: 'completed' })
+                    .eq('id', item.id)
+                    .then()
+            }
+        }
+        return item
+    })
+
+    return mapped
 }
 
 // Super admin: get wallet balance for a tenant

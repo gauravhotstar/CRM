@@ -2,6 +2,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { sendStatusUpdateMessage } from "@/app/actions/whatsapp";
+import { recordIvrLeadReceived } from "@/lib/ivr-tracker";
 
 export const dynamic = 'force-dynamic';
 
@@ -198,6 +199,12 @@ export async function POST(request: NextRequest) {
                 if (updErr) console.error("🚨 [IVR DIGIT] Update Error:", updErr);
                 else {
                     console.log(`♻️ [IVR DIGIT] Re-assigned existing lead ${existingLead.id} to agent ${agentId}`);
+                    
+                    // Track lead arrival for IVR campaign upload status (pending -> running)
+                    recordIvrLeadReceived(supabaseAdmin, tenantId, rawDid).catch(err => {
+                        console.error("[IVR DIGIT] Error tracking IVR lead status:", err);
+                    });
+
                     if (tenantId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6') {
                         sendStatusUpdateMessage(existingLead.id, dbPhone, tenantId).catch(err => {
                             console.error("[IVR DIGIT] Failed to send auto WhatsApp:", err);
@@ -218,6 +225,12 @@ export async function POST(request: NextRequest) {
                 if (insErr) console.error("🚨 [IVR DIGIT] Insert Error:", insErr);
                 else {
                     console.log(`✨ [IVR DIGIT] Created new lead for ${dbPhone} → agent ${agentId}`);
+                    
+                    // Track lead arrival for IVR campaign upload status (pending -> running)
+                    recordIvrLeadReceived(supabaseAdmin, tenantId, rawDid).catch(err => {
+                        console.error("[IVR DIGIT] Error tracking IVR lead status:", err);
+                    });
+
                     if (tenantId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6' && newLeadData?.id) {
                         sendStatusUpdateMessage(newLeadData.id, dbPhone, tenantId).catch(err => {
                             console.error("[IVR DIGIT] Failed to send auto WhatsApp:", err);

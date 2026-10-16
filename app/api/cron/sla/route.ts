@@ -1,6 +1,7 @@
 // app/api/cron/sla/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { parseIvrMeta } from "@/lib/ivr-tracker";
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes max
@@ -230,6 +231,27 @@ export async function GET(request: Request) {
 
         console.log(`   ✅ Done with ${tenant.name}`);
     } // End of Tenant Loop
+
+    // Clean up idle 'running' IVR upload requests (no leads received in last 5 minutes)
+    try {
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: runningRequests } = await supabaseAdmin
+        .from('ivr_upload_requests')
+        .select('id, notes')
+        .eq('status', 'running');
+
+      if (runningRequests && runningRequests.length > 0) {
+        for (const req of runningRequests) {
+          const meta = parseIvrMeta(req.notes);
+          if (meta.last_lead_at && meta.last_lead_at < fiveMinAgo) {
+            await supabaseAdmin.from('ivr_upload_requests').update({ status: 'completed' }).eq('id', req.id);
+            console.log(`✅ [CRON SLA] IVR upload request ${req.id} marked completed (idle > 5 mins)`);
+          }
+        }
+      }
+    } catch (ivrErr) {
+      console.error("IVR auto-complete check error:", ivrErr);
+    }
 
     console.log(`\n🏁 [GLOBAL CRON FINISHED] SLA Reassigned: ${totalSlaReassigned} | NR Recycled: ${totalNrRecycled} | Sent to Dead: ${totalMovedToDead}`);
     

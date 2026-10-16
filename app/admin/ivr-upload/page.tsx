@@ -34,12 +34,35 @@ export default function IvrUploadPage() {
   const [validPhones, setValidPhones] = useState<string[]>([])
   const [notes, setNotes] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [nowTime, setNowTime] = useState(Date.now())
 
   const supabase = createClient()
 
   useEffect(() => {
     fetchInitialData()
   }, [])
+
+  // Lightweight 10s local clock for dynamic 5-minute countdown (0 network/Supabase calls)
+  useEffect(() => {
+    const timer = setInterval(() => setNowTime(Date.now()), 10000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Auto-refresh history every 20s ONLY if there is an active (pending or running) request
+  useEffect(() => {
+    if (!tenantId) return
+    const hasActive = history.some(h => {
+      const eff = getEffectiveStatus(h)
+      return eff === 'pending' || eff === 'running'
+    })
+    if (!hasActive) return
+
+    const interval = setInterval(() => {
+      fetchHistory(tenantId)
+    }, 20000)
+
+    return () => clearInterval(interval)
+  }, [tenantId, history, nowTime])
 
   useEffect(() => {
     if (inputMethod === 'paste') {
@@ -148,9 +171,27 @@ export default function IvrUploadPage() {
     setIsSubmitting(false)
   }
 
+  const getEffectiveStatus = (item: any) => {
+    if (!item) return 'pending'
+    if (item.status === 'completed' || item.status === 'failed') {
+      return item.status
+    }
+    if (item.status === 'running') {
+      const meta = item.meta
+      if (meta?.last_lead_at) {
+        const elapsed = nowTime - new Date(meta.last_lead_at).getTime()
+        if (elapsed >= 5 * 60 * 1000) {
+          return 'completed'
+        }
+      }
+      return 'running'
+    }
+    return item.status || 'pending'
+  }
+
   const statusColor: Record<string, string> = {
-    pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    processing: 'bg-blue-100 text-blue-800 border-blue-200',
+    pending: 'bg-amber-100 text-amber-800 border-amber-200',
+    running: 'bg-blue-100 text-blue-800 border-blue-200',
     completed: 'bg-green-100 text-green-800 border-green-200',
     failed: 'bg-red-100 text-red-800 border-red-200',
   }
@@ -281,21 +322,42 @@ export default function IvrUploadPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {history.map(h => (
-                <TableRow key={h.id}>
-                  <TableCell className="text-xs text-slate-500">
-                    {new Date(h.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </TableCell>
-                  <TableCell className="font-bold text-sm text-slate-800">{h.campaign_name}</TableCell>
-                  <TableCell className="text-xs font-medium text-slate-600">{h.did_number}</TableCell>
-                  <TableCell className="text-center text-sm font-mono text-indigo-600 font-bold">{h.total_contacts?.toLocaleString()}</TableCell>
-                  <TableCell className="text-right">
-                    <Badge className={`text-[10px] uppercase font-bold px-2 py-0.5 border ${statusColor[h.status] || 'bg-slate-100 text-slate-700'}`}>
-                      {h.status}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {history.map(h => {
+                const effStatus = getEffectiveStatus(h)
+                const leadsCount = h.meta?.leads_count || 0
+
+                return (
+                  <TableRow key={h.id}>
+                    <TableCell className="text-xs text-slate-500">
+                      {new Date(h.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </TableCell>
+                    <TableCell className="font-bold text-sm text-slate-800">
+                      <div className="flex items-center gap-2">
+                        <span>{h.campaign_name}</span>
+                        {leadsCount > 0 && (
+                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                            {leadsCount} {leadsCount === 1 ? 'lead' : 'leads'}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs font-medium text-slate-600">{h.did_number}</TableCell>
+                    <TableCell className="text-center text-sm font-mono text-indigo-600 font-bold">{h.total_contacts?.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge className={`text-[10px] uppercase font-bold px-2 py-0.5 border inline-flex items-center gap-1.5 ${statusColor[effStatus] || 'bg-slate-100 text-slate-700'}`}>
+                        {effStatus === 'running' && (
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+                          </span>
+                        )}
+                        {effStatus}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
               {!loadingHistory && history.length === 0 && (
                 <TableRow><TableCell colSpan={5} className="text-center py-8 text-sm text-slate-500">No requests found.</TableCell></TableRow>
               )}

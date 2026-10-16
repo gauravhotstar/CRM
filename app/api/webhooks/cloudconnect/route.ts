@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendStatusUpdateMessage } from '@/app/actions/whatsapp'
+import { recordIvrLeadReceived } from '@/lib/ivr-tracker'
 
 // Helper to lazy-load the Supabase Admin Client to bypass RLS for webhooks
 // This prevents Next.js build-time errors when env variables are missing during static analysis.
@@ -256,6 +257,12 @@ async function handleWebhook(req: Request) {
     if (lead && dtmfInput) {
         console.warn(`[Ozonetel Webhook] Existing lead pressed DTMF: ${callerNumber}, digit: ${dtmfInput}`);
         const effectiveTenantId = lead.tenant_id || TARGET_IVR_TENANT_ID;
+        
+        // Track lead arrival for IVR campaign upload status (pending -> running)
+        recordIvrLeadReceived(supabaseAdmin, effectiveTenantId, getParam('did')).catch(err => {
+            console.error("[Ozonetel Webhook] Error tracking IVR lead status:", err);
+        });
+
         if (effectiveTenantId === '576a6280-a9a2-425c-b1dd-eabfff3a00c6') {
             console.warn(`[Ozonetel Webhook] Firing WhatsApp 'application_status_update' for existing DTMF lead in tenant ${effectiveTenantId}: ${callerNumber}`);
             sendStatusUpdateMessage(lead.id, callerNumber, effectiveTenantId).catch(err => {
@@ -336,6 +343,11 @@ async function handleWebhook(req: Request) {
         if (createdLead) {
             console.warn(`[Ozonetel Webhook] Successfully created Lead ID: ${createdLead.id}`);
             lead = createdLead;
+            
+            // Track lead arrival for IVR campaign upload status (pending -> running)
+            recordIvrLeadReceived(supabaseAdmin, createdLead.tenant_id, getParam('did')).catch(err => {
+                console.error("[Ozonetel Webhook] Error tracking IVR lead status:", err);
+            });
             
             // Broadcast a popup specifically for the agent who just got assigned this brand-new lead!
             if (targetAgentId) {
