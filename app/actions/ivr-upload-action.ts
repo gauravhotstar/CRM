@@ -20,6 +20,19 @@ export async function submitIvrUploadRequest(data: { campaignName: string, didNu
 
         const { data: org } = await supabase.from('organizations').select('name').eq('id', profile.tenant_id).single()
 
+        // Clean, strip text headers/labels, and deduplicate 10-digit numbers
+        const cleanNumbers: string[] = []
+        for (const p of data.phoneNumbers || []) {
+            const digits = String(p || '').replace(/\D/g, '').slice(-10)
+            if (digits.length === 10) {
+                cleanNumbers.push(digits)
+            }
+        }
+        const uniqueNumbers = Array.from(new Set(cleanNumbers))
+        if (uniqueNumbers.length === 0) {
+            throw new Error("No valid 10-digit phone numbers found to upload")
+        }
+
         const supabaseAdmin = getSupabaseAdmin()
         const initialNotes = formatIvrMeta(data.notes || '', null, 0)
         const { error: insertError } = await supabaseAdmin.from('ivr_upload_requests').insert({
@@ -27,22 +40,79 @@ export async function submitIvrUploadRequest(data: { campaignName: string, didNu
             uploaded_by: user.id,
             campaign_name: data.campaignName,
             did_number: data.didNumber,
-            total_contacts: data.phoneNumbers.length,
+            total_contacts: uniqueNumbers.length,
             notes: initialNotes,
             status: 'pending'
         })
         if (insertError) throw insertError
 
-        let csvString = "phoneNumber\n" + data.phoneNumbers.join("\n")
+        // Chunk numbers into Excel (.xlsx) files with max 5,000 numbers per file
+        const CHUNK_SIZE = 5000
+        const totalChunks = Math.ceil(uniqueNumbers.length / CHUNK_SIZE)
+        const attachments: Array<{ filename: string, content: string }> = []
+
+        const ExcelJSModule = await import('exceljs')
+        const ExcelJS = (ExcelJSModule as any).default || ExcelJSModule
+        const safeCampaignName = data.campaignName.replace(/[^a-zA-Z0-9_-]/g, '_')
+
+        for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+            const start = chunkIdx * CHUNK_SIZE
+            const end = Math.min(start + CHUNK_SIZE, uniqueNumbers.length)
+            const batch = uniqueNumbers.slice(start, end)
+
+            const workbook = new ExcelJS.Workbook()
+            const worksheet = workbook.addWorksheet('Contacts')
+
+            // Format column 1 as integer number with no scientific notation
+            worksheet.getColumn(1).numFmt = '0'
+
+            // Add strictly pure number cells, starting at row 1, with ZERO text headers
+            for (const phone of batch) {
+                worksheet.addRow([Number(phone)])
+            }
+
+            const buffer = await workbook.xlsx.writeBuffer()
+            const base64Content = Buffer.from(buffer).toString('base64')
+
+            const filename = totalChunks === 1
+                ? `${safeCampaignName}_contacts.xlsx`
+                : `${safeCampaignName}_part_${chunkIdx + 1}_of_${totalChunks}_contacts.xlsx`
+
+            attachments.push({
+                filename,
+                content: base64Content
+            })
+        }
+
+        const batchSummary = totalChunks > 1
+            ? `<p style="margin-top:12px;"><b>Excel Files Attached:</b> Split into ${totalChunks} files (5,000 numbers max each):<br/>` +
+              attachments.map((att, i) => {
+                  const count = Math.min((i + 1) * CHUNK_SIZE, uniqueNumbers.length) - (i * CHUNK_SIZE)
+                  return `&bull; <code>${att.filename}</code> (${count.toLocaleString()} numbers)`
+              }).join('<br/>') + '</p>'
+            : `<p style="margin-top:12px;"><b>Excel File Attached:</b> <code>${attachments[0].filename}</code> (${uniqueNumbers.length.toLocaleString()} numbers)</p>`
 
         const { Resend } = await import('resend')
         const resend = new Resend(process.env.RESEND_API_KEY)
         const resendResponse = await resend.emails.send({
             from: 'Hanva CRM <reports@crm.hanva.in>',
             to: 'rajpootsingh260@gmail.com',
-            subject: `[IVR Upload] ${org?.name || profile.tenant_id} - ${data.campaignName} - ${data.phoneNumbers.length} contacts`,
-            html: `<h2>New IVR Upload Request</h2><table><tr><td><b>Tenant</b></td><td>${org?.name}</td></tr><tr><td><b>Campaign</b></td><td>${data.campaignName}</td></tr><tr><td><b>DID Number</b></td><td>${data.didNumber}</td></tr><tr><td><b>DID Label</b></td><td>${data.didLabel || 'N/A'}</td></tr><tr><td><b>Total Contacts</b></td><td>${data.phoneNumbers.length}</td></tr><tr><td><b>Notes</b></td><td>${data.notes || 'None'}</td></tr><tr><td><b>Uploaded At</b></td><td>${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST</td></tr></table>`,
-            attachments: [{ filename: data.campaignName.replace(/[^a-zA-Z0-9]/g,'_') + '_contacts.csv', content: Buffer.from(csvString).toString('base64') }]
+            subject: `[IVR Upload] ${org?.name || profile.tenant_id} - ${data.campaignName} - ${uniqueNumbers.length.toLocaleString()} contacts (${totalChunks} ${totalChunks === 1 ? 'Excel' : 'Excels'})`,
+            html: `
+                <h2>New IVR Upload Request</h2>
+                <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: sans-serif; font-size: 14px;">
+                    <tr><td style="background:#f1f5f9;"><b>Tenant</b></td><td>${org?.name || profile.tenant_id}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Campaign</b></td><td>${data.campaignName}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>DID Number</b></td><td>${data.didNumber}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>DID Label</b></td><td>${data.didLabel || 'N/A'}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Total Contacts</b></td><td>${uniqueNumbers.length.toLocaleString()}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Excel Attachments</b></td><td>${totalChunks} file(s) (5,000 numbers each, pure numbers, no headers)</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Notes</b></td><td>${data.notes || 'None'}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Uploaded At</b></td><td>${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST</td></tr>
+                </table>
+                ${batchSummary}
+            `,
+            attachments
         })
 
         if (resendResponse.error) {
