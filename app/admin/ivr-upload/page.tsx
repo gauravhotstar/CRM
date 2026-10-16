@@ -295,16 +295,9 @@ export default function IvrUploadPage() {
             )}
 
             {validPhones.length > 0 && (
-              <div className="flex flex-col gap-1 text-sm bg-emerald-50 p-3.5 rounded-xl border border-emerald-200">
-                <div className="flex items-center gap-2 text-emerald-800 font-bold">
-                  <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <span>Found {validPhones.length.toLocaleString()} valid 10-digit numbers (text & headers automatically stripped).</span>
-                </div>
-                {validPhones.length > 5000 && (
-                  <p className="text-xs text-emerald-700 font-medium ml-7">
-                    📦 Will be split into <b>{Math.ceil(validPhones.length / 5000)} Excel (.xlsx) files</b> of 5,000 numbers each (pure numbers, zero text cells).
-                  </p>
-                )}
+              <div className="flex items-center gap-2 text-sm text-emerald-600 font-bold bg-emerald-50 p-3 rounded-lg border border-emerald-100">
+                <CheckCircle className="w-5 h-5 shrink-0" />
+                <span>Found {validPhones.length.toLocaleString()} valid 10-digit numbers.</span>
               </div>
             )}
           </div>
