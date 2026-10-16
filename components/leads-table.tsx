@@ -21,8 +21,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { LeadStatusDialog } from "@/components/lead-status-dialog"
-import { classifySentiment } from "@/components/lead-status-updater"
 import { sendBulkCampaign } from "@/app/actions/campaigns"
+import { toast } from "sonner"
 import { QuickActions } from "@/components/quick-actions"
 import { PowerDialer } from "@/components/power-dialer"
 import { 

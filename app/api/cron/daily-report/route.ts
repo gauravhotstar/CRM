@@ -39,6 +39,7 @@ export async function GET(request: Request) {
     const authHeader = request.headers.get('authorization')
     const { searchParams } = new URL(request.url)
     const queryKey = searchParams.get('key')
+    const force = searchParams.get('force') === 'true'
     const secret = process.env.CRON_SECRET
 
     if ((authHeader !== `Bearer ${secret}`) && (queryKey !== secret)) {
@@ -47,21 +48,28 @@ export async function GET(request: Request) {
 
     console.log("⏳ Starting Multi-Tenant Daily Report Job...")
 
-    // 2. TIME CALCULATIONS
-    const today = new Date()
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
-    
-    // Dates
-    const dateStr = yesterday.toISOString().split('T')[0] // YYYY-MM-DD
-    const startOfYesterday = `${dateStr}T00:00:00.000Z`
-    const endOfYesterday = `${dateStr}T23:59:59.999Z`
+    // 2. TIME CALCULATIONS (Indian Standard Time: Asia/Kolkata)
+    const nowIST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }))
+    const yesterdayIST = new Date(nowIST)
+    yesterdayIST.setDate(yesterdayIST.getDate() - 1)
 
-    // Monthly Range (For Revenue Targets)
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString()
-    const totalDaysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
-    const daysRemaining = Math.max(1, totalDaysInMonth - today.getDate())
+    const yYear = yesterdayIST.getFullYear()
+    const yMonth = String(yesterdayIST.getMonth() + 1).padStart(2, '0')
+    const yDay = String(yesterdayIST.getDate()).padStart(2, '0')
+    const dateStr = `${yYear}-${yMonth}-${yDay}` // Exact YYYY-MM-DD in IST
+
+    // Exact 24-hour boundaries for yesterday in IST:
+    const startOfYesterday = new Date(`${dateStr}T00:00:00+05:30`).toISOString()
+    const endOfYesterday = new Date(`${dateStr}T23:59:59.999+05:30`).toISOString()
+
+    // Monthly Range (In IST)
+    const curYear = nowIST.getFullYear()
+    const curMonth = nowIST.getMonth()
+    const curMonthStr = String(curMonth + 1).padStart(2, '0')
+    const totalDaysInMonth = new Date(curYear, curMonth + 1, 0).getDate()
+    const daysRemaining = Math.max(1, totalDaysInMonth - nowIST.getDate())
+    const startOfMonth = new Date(`${curYear}-${curMonthStr}-01T00:00:00+05:30`).toISOString()
+    const endOfMonth = new Date(`${curYear}-${curMonthStr}-${String(totalDaysInMonth).padStart(2, '0')}T23:59:59.999+05:30`).toISOString()
 
     let emailsSent = 0
 
@@ -79,6 +87,13 @@ export async function GET(request: Request) {
     }
 
     const enabledTenantIds = activeTenants.map(t => t.tenant_id);
+
+    // Fetch org names for clear email identification
+    const { data: orgs } = await supabaseAdmin
+      .from('organizations')
+      .select('id, name')
+      .in('id', enabledTenantIds);
+    const orgMap = new Map((orgs || []).map((o: any) => [o.id, o.name]));
 
     // 🔴 4. FETCH ALL ACTIVE USERS (ONLY FOR OPTED-IN TENANTS)
     const { data: allUsers } = await supabaseAdmin
@@ -100,21 +115,8 @@ export async function GET(request: Request) {
     // 5. PROCESS EACH TENANT SEPARATELY (ISOLATED EXECUTION)
     // ============================================================
     for (const tenantId of Object.keys(usersByTenant)) {
-      console.log(`🏢 Processing reports for Tenant: ${tenantId}`);
-      
-      // 🔒 IDEMPOTENCY LOCK: Prevent duplicate emails if cron retries
-      const { data: existingLock } = await supabaseAdmin
-        .from('notifications')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('title', `Daily Report: ${dateStr}`)
-        .limit(1)
-        .maybeSingle();
-
-      if (existingLock) {
-        console.log(`⏭️ Reports already sent for Tenant ${tenantId} today. Skipping to prevent duplicates.`);
-        continue;
-      }
+      const orgName = orgMap.get(tenantId) || 'Workspace';
+      console.log(`🏢 Processing reports for Tenant: ${orgName} (${tenantId})`);
 
       const tenantUsers = usersByTenant[tenantId]
       
@@ -125,28 +127,63 @@ export async function GET(request: Request) {
       const staffIds = telecallers.map(u => u.id)
       if (staffIds.length === 0) continue
 
+      // 🔒 ATOMIC IDEMPOTENCY LOCK: Prevent duplicate emails if cron is triggered multiple times a day
+      const lockTitle = `Daily Report: ${dateStr}`
+      const { data: existingLock } = await supabaseAdmin
+        .from('notifications')
+        .select('id, created_at')
+        .eq('tenant_id', tenantId)
+        .eq('title', lockTitle)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingLock && !force) {
+        console.log(`⏭️ Daily report already sent for Tenant ${orgName} on ${dateStr}. Skipping to prevent duplicates.`);
+        continue;
+      }
+
+      // Immediately acquire lock BEFORE sending emails to block any concurrent executions
+      const firstUserId = admins[0]?.id || staffIds[0];
+      if (!existingLock) {
+        const { error: lockErr } = await supabaseAdmin
+          .from('notifications')
+          .insert({
+            tenant_id: tenantId,
+            user_id: firstUserId,
+            title: lockTitle,
+            message: `Daily report processing started for ${dateStr}`,
+            type: 'system',
+            is_read: false,
+            created_at: new Date().toISOString()
+          });
+        if (lockErr) {
+          console.warn(`⚠️ Could not claim lock for tenant ${tenantId}. Concurrent run detected. Skipping.`, lockErr.message);
+          continue;
+        }
+      }
+
       // A. FETCH RAW DATA FOR THIS TENANT ONLY
       // --------------------------------------
       
-      // 1. Call Logs (Yesterday)
+      // 1. Call Logs (Yesterday in IST)
       const { data: calls } = await supabaseAdmin
         .from('call_logs')
-        .select('user_id, duration_seconds, call_status')
-        .eq('tenant_id', tenantId) // Ensure we only hit this tenant's logs
+        .select('user_id, duration_seconds, duration, talk_time_seconds, call_status')
+        .eq('tenant_id', tenantId)
         .in('user_id', staffIds)
         .gte('created_at', startOfYesterday)
         .lte('created_at', endOfYesterday)
 
-      // 2. Leads Updated Yesterday
+      // 2. Leads Updated Yesterday in IST
       const { data: leadUpdates } = await supabaseAdmin
         .from('leads')
         .select('assigned_to, status')
-        .eq('tenant_id', tenantId) // Ensure we only hit this tenant's leads
+        .eq('tenant_id', tenantId)
         .in('assigned_to', staffIds)
         .gte('updated_at', startOfYesterday)
         .lte('updated_at', endOfYesterday)
 
-      // 3. Revenue (Month to Date)
+      // 3. Revenue (Month to Date in IST)
       const { data: revenueLeads } = await supabaseAdmin
         .from('leads')
         .select('assigned_to, disbursed_amount, loan_amount')
@@ -154,7 +191,7 @@ export async function GET(request: Request) {
         .in('assigned_to', staffIds)
         .gte('updated_at', startOfMonth)
         .lte('updated_at', endOfMonth)
-        .eq('status', 'Disbursed') // Ensure exact case match with your DB
+        .in('status', ['Disbursed', 'DISBURSED', 'Approved', 'approved'])
 
       // B. AGGREGATE STATS
       // -----------------
@@ -171,30 +208,48 @@ export async function GET(request: Request) {
       })
 
       // Fill Calls
-      calls?.forEach(c => {
+      calls?.forEach((c: any) => {
         if(statsMap[c.user_id]) {
           statsMap[c.user_id].count++
-          statsMap[c.user_id].duration += (c.duration_seconds || 0)
+          const callDuration = Math.max(Number(c.duration_seconds) || 0, Number(c.duration) || 0, Number(c.talk_time_seconds) || 0)
+          statsMap[c.user_id].duration += callDuration
         }
       })
 
       // Fill Statuses
-      leadUpdates?.forEach(l => {
+      leadUpdates?.forEach((l: any) => {
         if(!statsMap[l.assigned_to]) return
         const s = statsMap[l.assigned_to]
-        const status = l.status
+        const rawStatus = String(l.status || '').toLowerCase().trim()
         
-        if (status === 'follow_up') s.callback++
-        else if (['Interested', 'Documents_Sent'].includes(status)) s.interested++
-        else if (['Login', 'Sent to Login'].includes(status)) s.login++
-        else if (status === 'not_eligible') s.notEligible++
-        else if (status === 'Not_Interested') s.notInterested++
-        else if (['nr', 'Busy', 'RNR', 'Switched Off'].includes(status)) s.nr++
-        else if (status === 'Disbursed' || status === 'DISBURSED') s.DISBURSEDCount++
+        if (['follow_up', 'callback', 'call back'].includes(rawStatus)) {
+          s.callback++
+        } else if (['interested', 'documents_sent', 'documents pending', 'docs sent'].includes(rawStatus)) {
+          s.interested++
+        } else if (['login', 'sent to login', 'login done'].includes(rawStatus)) {
+          s.login++
+        } else if (['not_eligible', 'not eligible'].includes(rawStatus)) {
+          s.notEligible++
+        } else if (['not_interested', 'not interested'].includes(rawStatus)) {
+          s.notInterested++
+        } else if (['nr', 'rnr', 'busy', 'switched off', 'contacted', 'not reachable'].includes(rawStatus)) {
+          s.nr++
+        } else if (['disbursed', 'approved'].includes(rawStatus)) {
+          s.DISBURSEDCount++
+        }
+      })
+
+      // Ensure count reflects productive lead interactions if calls weren't logged or is lower
+      telecallers.forEach((u: any) => {
+        const s = statsMap[u.id]
+        if (s) {
+          const totalDispositions = s.nr + s.callback + s.interested + s.login + s.notEligible + s.notInterested + s.DISBURSEDCount
+          s.count = Math.max(s.count, totalDispositions)
+        }
       })
 
       // Fill Revenue
-      revenueLeads?.forEach(l => {
+      revenueLeads?.forEach((l: any) => {
         if(statsMap[l.assigned_to]) {
           const rawAmount = l.disbursed_amount || l.loan_amount;
           const cleanAmount = parseAmount(rawAmount);
@@ -212,10 +267,8 @@ export async function GET(request: Request) {
       // Volume Leaderboard (For Admin Table)
       const volumeSorted = [...statsArray].sort((a:any, b:any) => b.count - a.count)
 
-
       // C. SEND EMAILS FOR THIS TENANT
       // ------------------------------
-
       let tenantEmailsSent = 0;
 
       // 1. Send "Performance Coach" to Telecallers
@@ -229,7 +282,8 @@ export async function GET(request: Request) {
           totalStaff: revenueSorted.length,
           topPerformer: topRevenuePerformer,
           daysRemaining,
-          dateStr
+          dateStr,
+          orgName
         })
         emailsSent++
         tenantEmailsSent++
@@ -238,13 +292,13 @@ export async function GET(request: Request) {
 
       // 2. Send "Global Report" to Admins of THIS Tenant
       if (admins.length > 0) {
-        const adminHTML = generateAdminHTML(volumeSorted, dateStr)
+        const adminHTML = generateAdminHTML(volumeSorted, dateStr, orgName)
         
         for (const admin of admins) {
           const { data, error } = await resend.emails.send({
             from: 'Hanva CRM <reports@crm.hanva.in>',
             to: admin.email,
-            subject: `📊 Workspace Daily Report - ${dateStr}`,
+            subject: `📊 ${orgName} Daily Report - ${dateStr}`,
             html: adminHTML
           })
           
@@ -259,18 +313,15 @@ export async function GET(request: Request) {
         }
       }
 
-      // 🔒 SET IDEMPOTENCY LOCK: Record that this tenant's emails are done for today
+      // 🔒 UPDATE IDEMPOTENCY LOCK: Record final count of emails sent
       if (tenantEmailsSent > 0) {
-        const firstUserId = admins[0]?.id || staffIds[0];
-        await supabaseAdmin.from('notifications').insert({
-          tenant_id: tenantId,
-          user_id: firstUserId,
-          title: `Daily Report: ${dateStr}`,
-          message: `System successfully generated and sent ${tenantEmailsSent} daily performance emails.`,
-          type: 'system',
-          is_read: false,
-          created_at: new Date().toISOString()
-        });
+        await supabaseAdmin
+          .from('notifications')
+          .update({
+            message: `System successfully generated and sent ${tenantEmailsSent} daily performance emails for ${dateStr}.`
+          })
+          .eq('tenant_id', tenantId)
+          .eq('title', lockTitle);
       }
 
     } // End Tenant Loop
@@ -288,7 +339,7 @@ export async function GET(request: Request) {
 // ==================================================================
 // TEMPLATE 1: TELECALLER COACHING REPORT
 // ==================================================================
-async function sendTelecallerReport({ recipient, stats, rank, totalStaff, topPerformer, daysRemaining, dateStr }: any) {
+async function sendTelecallerReport({ recipient, stats, rank, totalStaff, topPerformer, daysRemaining, dateStr, orgName = 'Workspace' }: any) {
   
   const target = parseAmount(recipient.monthly_target || 3000000)
   const gap = Math.max(0, target - stats.revenueAchieved)
@@ -304,7 +355,7 @@ async function sendTelecallerReport({ recipient, stats, rank, totalStaff, topPer
     coachBox = `
       <div style="border-left: 4px solid #ef4444; background: #fef2f2; padding: 10px; margin-bottom: 10px;">
         <strong style="color: #991b1b;">⚠️ Volume Alert:</strong> 
-        You made <strong>${stats.count}</strong> calls yesterday. The target is <strong>${TARGET_DAILY_CALLS}</strong>. 
+        You logged <strong>${stats.count}</strong> calls/touches yesterday. The target is <strong>${TARGET_DAILY_CALLS}</strong>. 
         High volume is the first step to success.
       </div>`
   } else if (stats.login < TARGET_DAILY_LOGINS) {
@@ -327,7 +378,7 @@ async function sendTelecallerReport({ recipient, stats, rank, totalStaff, topPer
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; background: #fff; border: 1px solid #eee; border-radius: 8px;">
         
         <div style="text-align: center; background: #1e3a8a; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-          <h2 style="margin: 0;">Daily Performance Coach</h2>
+          <h2 style="margin: 0;">${orgName} — Performance Coach</h2>
           <p style="margin: 5px 0 0; opacity: 0.8;">${dateStr}</p>
         </div>
 
@@ -341,7 +392,7 @@ async function sendTelecallerReport({ recipient, stats, rank, totalStaff, topPer
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
             <div style="background: #f8fafc; padding: 15px; border-radius: 8px; text-align: center;">
-              <p style="font-size: 11px; color: #666; margin: 0;">Calls (Target: ${TARGET_DAILY_CALLS})</p>
+              <p style="font-size: 11px; color: #666; margin: 0;">Calls/Touches (Target: ${TARGET_DAILY_CALLS})</p>
               <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: ${stats.count >= TARGET_DAILY_CALLS ? '#22c55e' : '#ef4444'}">
                 ${stats.count}
               </p>
@@ -385,7 +436,7 @@ async function sendTelecallerReport({ recipient, stats, rank, totalStaff, topPer
   const { data, error } = await resend.emails.send({
     from: 'Hanva CRM <reports@crm.hanva.in>', 
     to: recipient.email,
-    subject: `🎯 Performance Coach - ${dateStr}`,
+    subject: `🎯 ${orgName} Performance Coach - ${dateStr}`,
     html: html
   })
 
@@ -400,7 +451,7 @@ async function sendTelecallerReport({ recipient, stats, rank, totalStaff, topPer
 // ==================================================================
 // TEMPLATE 2: ADMIN GLOBAL REPORT (Pivot Table)
 // ==================================================================
-function generateAdminHTML(sortedStats: any[], dateStr: string) {
+function generateAdminHTML(sortedStats: any[], dateStr: string, orgName: string = 'Workspace') {
   
   const total = { count: 0, nr: 0, callback: 0, interested: 0, login: 0, notEligible: 0, notInterested: 0, DISBURSED: 0, duration: 0 }
   
@@ -442,8 +493,8 @@ function generateAdminHTML(sortedStats: any[], dateStr: string) {
 
   return `
       <div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; overflow-x: auto;">
-        <h2 style="color: #1e3a8a;">Workspace Daily Report (${dateStr})</h2>
-        <p>Sorted by call volume (High to Low).</p>
+        <h2 style="color: #1e3a8a;">${orgName} — Workspace Daily Report (${dateStr})</h2>
+        <p>Sorted by activity/call volume (High to Low).</p>
         
         <table style="width: 100%; border-collapse: collapse; min-width: 800px;">
           <thead>
