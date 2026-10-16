@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { 
   Building2, PhoneCall, MessageSquare, 
-  Save, KeyRound, Loader2, ShieldCheck, Clock, Activity 
+  Save, KeyRound, Loader2, ShieldCheck, Clock, Activity, Phone 
 } from "lucide-react"
 
 // Import our Server Actions
@@ -26,6 +26,7 @@ export default function WorkspaceSettingsPage() {
   const [formData, setFormData] = useState({
     fonada_client_id: "",
     fonada_secret: "",
+    fonada_waba_number: "",
     whatsapp_api_key: "",
     whatsapp_ai_agent_enabled: false,
     unicorn_api_key: "",
@@ -55,6 +56,7 @@ export default function WorkspaceSettingsPage() {
           setFormData({
             fonada_client_id: data.fonada_client_id || "",
             fonada_secret: data.fonada_secret || "",
+            fonada_waba_number: data.fonada_waba_number || "",
             whatsapp_api_key: data.whatsapp_api_key || "",
             whatsapp_ai_agent_enabled: data.whatsapp_ai_agent_enabled ?? false,
             unicorn_api_key: data.unicorn_api_key || "",
@@ -165,6 +167,20 @@ export default function WorkspaceSettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6 space-y-5">
+            <div className="space-y-2">
+              <Label className="text-slate-700 font-semibold flex items-center gap-2">
+                WhatsApp Sender Number (WABA Number) <Phone className="h-3 w-3 text-slate-400" />
+              </Label>
+              <Input 
+                type="text"
+                placeholder="e.g. 919278057904" 
+                value={formData.fonada_waba_number}
+                onChange={(e) => setFormData(prev => ({ ...prev, fonada_waba_number: e.target.value }))}
+                className="font-mono text-sm bg-slate-50"
+              />
+              <p className="text-xs text-slate-500">The registered phone number on Fonada/Meta with country code (e.g. 919278057904).</p>
+            </div>
+
             <div className="space-y-2">
               <Label className="text-slate-700 font-semibold flex items-center gap-2">
                 WhatsApp API Bearer Token <KeyRound className="h-3 w-3 text-slate-400" />

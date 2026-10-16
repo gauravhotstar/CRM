@@ -67,7 +67,7 @@ export async function getWorkspaceSettings() {
         const { data, error } = await supabaseAdmin
             .from('tenant_settings')
             .select(`
-                fonada_client_id, fonada_secret, whatsapp_api_key, whatsapp_ai_agent_enabled,
+                fonada_client_id, fonada_secret, fonada_waba_number, whatsapp_api_key, whatsapp_ai_agent_enabled,
                 cron_auto_checkout, cron_auto_refill, cron_daily_report, 
                 cron_kyc, cron_sla, cron_smart_notifications, unicorn_api_key,
                 ivr_digit_auto_assign
@@ -98,6 +98,7 @@ export async function getWorkspaceSettings() {
 export async function updateWorkspaceSettings(formData: {
     fonada_client_id: string;
     fonada_secret: string;
+    fonada_waba_number?: string;
     whatsapp_api_key: string;
     whatsapp_ai_agent_enabled: boolean;
     cron_auto_checkout: boolean;
@@ -124,6 +125,7 @@ export async function updateWorkspaceSettings(formData: {
             tenant_id: tenantId,
             fonada_client_id: formData.fonada_client_id || "",
             fonada_secret: formData.fonada_secret || "",
+            fonada_waba_number: formData.fonada_waba_number ? String(formData.fonada_waba_number).replace(/\D/g, '') : null,
             whatsapp_api_key: formData.whatsapp_api_key || "",
             whatsapp_ai_agent_enabled: Boolean(formData.whatsapp_ai_agent_enabled),
             cron_auto_checkout: Boolean(formData.cron_auto_checkout),
