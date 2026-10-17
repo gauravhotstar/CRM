@@ -232,9 +232,9 @@ export async function GET(request: Request) {
         console.log(`   ✅ Done with ${tenant.name}`);
     } // End of Tenant Loop
 
-    // Clean up idle 'running' IVR upload requests (no leads received in last 5 minutes)
+    // Clean up idle 'running' IVR upload requests (no leads received in last 10 minutes)
     try {
-      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       const { data: runningRequests } = await supabaseAdmin
         .from('ivr_upload_requests')
         .select('id, notes')
@@ -243,9 +243,9 @@ export async function GET(request: Request) {
       if (runningRequests && runningRequests.length > 0) {
         for (const req of runningRequests) {
           const meta = parseIvrMeta(req.notes);
-          if (meta.last_lead_at && meta.last_lead_at < fiveMinAgo) {
+          if (meta.last_lead_at && meta.last_lead_at < tenMinAgo) {
             await supabaseAdmin.from('ivr_upload_requests').update({ status: 'completed' }).eq('id', req.id);
-            console.log(`✅ [CRON SLA] IVR upload request ${req.id} marked completed (idle > 5 mins)`);
+            console.log(`✅ [CRON SLA] IVR upload request ${req.id} marked completed (idle > 10 mins)`);
           }
         }
       }

@@ -192,7 +192,7 @@ export default function IvrUploadPage() {
       const meta = item.meta
       if (meta?.last_lead_at) {
         const elapsed = nowTime - new Date(meta.last_lead_at).getTime()
-        if (elapsed >= 5 * 60 * 1000) {
+        if (elapsed >= 10 * 60 * 1000) {
           return 'completed'
         }
       }
@@ -330,7 +330,8 @@ export default function IvrUploadPage() {
                 <TableHead className="font-bold">Date</TableHead>
                 <TableHead className="font-bold">Campaign Name</TableHead>
                 <TableHead className="font-bold">DID</TableHead>
-                <TableHead className="text-center font-bold">Contacts</TableHead>
+                <TableHead className="text-center font-bold">Total Uploaded</TableHead>
+                <TableHead className="text-center font-bold">Fetched Leads</TableHead>
                 <TableHead className="text-right font-bold">Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -338,6 +339,9 @@ export default function IvrUploadPage() {
               {history.map(h => {
                 const effStatus = getEffectiveStatus(h)
                 const leadsCount = h.meta?.leads_count || 0
+                const minsLeft = h.meta?.last_lead_at 
+                  ? Math.max(0, 10 - Math.floor((nowTime - new Date(h.meta.last_lead_at).getTime()) / 60000))
+                  : 10
 
                 return (
                   <TableRow key={h.id}>
@@ -345,18 +349,22 @@ export default function IvrUploadPage() {
                       {new Date(h.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </TableCell>
                     <TableCell className="font-bold text-sm text-slate-800">
-                      <div className="flex items-center gap-2">
-                        <span>{h.campaign_name}</span>
-                        {leadsCount > 0 && (
-                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                            <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                            {leadsCount} {leadsCount === 1 ? 'lead' : 'leads'}
-                          </span>
-                        )}
-                      </div>
+                      {h.campaign_name}
                     </TableCell>
                     <TableCell className="text-xs font-medium text-slate-600">{h.did_number}</TableCell>
-                    <TableCell className="text-center text-sm font-mono text-indigo-600 font-bold">{h.total_contacts?.toLocaleString()}</TableCell>
+                    <TableCell className="text-center text-sm font-mono text-slate-700 font-bold">
+                      {h.total_contacts?.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {leadsCount > 0 ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
+                          <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${effStatus === 'running' ? 'animate-pulse' : ''}`} />
+                          {leadsCount.toLocaleString()} {leadsCount === 1 ? 'lead' : 'leads'}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-mono text-slate-400">0 leads</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Badge className={`text-[10px] uppercase font-bold px-2 py-0.5 border inline-flex items-center gap-1.5 ${statusColor[effStatus] || 'bg-slate-100 text-slate-700'}`}>
                         {effStatus === 'running' && (
@@ -365,14 +373,14 @@ export default function IvrUploadPage() {
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
                           </span>
                         )}
-                        {effStatus}
+                        {effStatus === 'running' ? `RUNNING (${minsLeft}m)` : effStatus}
                       </Badge>
                     </TableCell>
                   </TableRow>
                 )
               })}
               {!loadingHistory && history.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-sm text-slate-500">No requests found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-sm text-slate-500">No requests found.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

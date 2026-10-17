@@ -55,11 +55,11 @@ export async function recordIvrLeadReceived(supabaseAdmin: any, tenantId: string
 
     let activeRequest = null;
 
-    // 1. Try matching by specific DID first if provided
+    // 1. Try matching by specific DID first if provided (pending or running)
     if (cleanDid) {
       const { data } = await supabaseAdmin
         .from('ivr_upload_requests')
-        .select('id, status, notes, did_number')
+        .select('id, status, notes, did_number, created_at')
         .eq('tenant_id', tenantId)
         .eq('did_number', cleanDid)
         .in('status', ['pending', 'running'])
@@ -73,7 +73,7 @@ export async function recordIvrLeadReceived(supabaseAdmin: any, tenantId: string
     if (!activeRequest) {
       const { data } = await supabaseAdmin
         .from('ivr_upload_requests')
-        .select('id, status, notes, did_number')
+        .select('id, status, notes, did_number, created_at')
         .eq('tenant_id', tenantId)
         .in('status', ['pending', 'running'])
         .order('created_at', { ascending: false })
@@ -82,11 +82,49 @@ export async function recordIvrLeadReceived(supabaseAdmin: any, tenantId: string
       activeRequest = data;
     }
 
+    // 3. Fallback: If campaign was auto-completed due to inactivity gap, reactivate latest request from today
+    if (!activeRequest) {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      if (cleanDid) {
+        const { data } = await supabaseAdmin
+          .from('ivr_upload_requests')
+          .select('id, status, notes, did_number, created_at')
+          .eq('tenant_id', tenantId)
+          .eq('did_number', cleanDid)
+          .gte('created_at', oneDayAgo)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        activeRequest = data;
+      }
+      if (!activeRequest) {
+        const { data } = await supabaseAdmin
+          .from('ivr_upload_requests')
+          .select('id, status, notes, did_number, created_at')
+          .eq('tenant_id', tenantId)
+          .gte('created_at', oneDayAgo)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        activeRequest = data;
+      }
+    }
+
     if (!activeRequest) return;
+
+    // 4. Calculate 100% exact count from leads table (head: true uses zero row bandwidth, ~2ms)
+    const { count: exactLeadCount } = await supabaseAdmin
+      .from('leads')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .gte('created_at', activeRequest.created_at)
+      .ilike('name', '%IVR%');
 
     const meta = parseIvrMeta(activeRequest.notes);
     meta.last_lead_at = new Date().toISOString();
-    meta.leads_count = (meta.leads_count || 0) + 1;
+    meta.leads_count = typeof exactLeadCount === 'number' && exactLeadCount > 0 
+      ? exactLeadCount 
+      : (meta.leads_count || 0) + 1;
 
     await supabaseAdmin
       .from('ivr_upload_requests')
@@ -96,7 +134,7 @@ export async function recordIvrLeadReceived(supabaseAdmin: any, tenantId: string
       })
       .eq('id', activeRequest.id);
 
-    console.log(`📡 [IVR Status] Request ${activeRequest.id} → RUNNING (Total leads: ${meta.leads_count})`);
+    console.log(`📡 [IVR Status] Request ${activeRequest.id} → RUNNING (Total fetched leads: ${meta.leads_count})`);
   } catch (err) {
     console.error("⚠️ Failed to record IVR lead arrival:", err);
   }

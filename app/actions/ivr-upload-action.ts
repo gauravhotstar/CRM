@@ -127,7 +127,7 @@ export async function submitIvrUploadRequest(data: { campaignName: string, didNu
     }
 }
 
-// Fetch history using admin client to bypass RLS, with 5-minute idle auto-completion
+// Fetch history using admin client to bypass RLS, with 10-minute idle auto-completion
 export async function getIvrUploadHistory(tenantId: string) {
     const supabaseAdmin = getSupabaseAdmin()
     const { data, error } = await supabaseAdmin
@@ -139,17 +139,47 @@ export async function getIvrUploadHistory(tenantId: string) {
     if (error) throw new Error(error.message)
 
     const now = Date.now()
-    const fiveMinutes = 5 * 60 * 1000
+    const tenMinutes = 10 * 60 * 1000
 
-    const mapped = (data || []).map((item: any) => {
+    const mapped = await Promise.all((data || []).map(async (item: any, i: number) => {
         const meta = parseIvrMeta(item.notes)
+
+        // For recent requests (last 48 hours), sync 100% exact leads count from DB
+        const isRecent = (now - new Date(item.created_at).getTime()) < 48 * 60 * 60 * 1000
+        if (isRecent) {
+            const nextReq = data[i - 1]; // next more recent request if any
+            let q = supabaseAdmin
+                .from('leads')
+                .select('*', { count: 'exact', head: true })
+                .eq('tenant_id', tenantId)
+                .gte('created_at', item.created_at)
+                .ilike('name', '%IVR%')
+
+            if (nextReq) {
+                q = q.lt('created_at', nextReq.created_at)
+            }
+
+            const { count: exactLeadCount } = await q
+            if (typeof exactLeadCount === 'number' && exactLeadCount !== meta.leads_count) {
+                meta.leads_count = exactLeadCount
+                // Lazily persist synced count to database
+                supabaseAdmin
+                    .from('ivr_upload_requests')
+                    .update({
+                        notes: formatIvrMeta(meta.user_note, meta.last_lead_at, meta.leads_count)
+                    })
+                    .eq('id', item.id)
+                    .then()
+            }
+        }
+
         item.meta = meta
 
-        // If request is running but no leads have arrived in the last 5 minutes -> complete it
+        // If request is running but no leads have arrived in the last 10 minutes -> complete it
         if (item.status === 'running') {
             if (meta.last_lead_at) {
                 const elapsed = now - new Date(meta.last_lead_at).getTime()
-                if (elapsed >= fiveMinutes) {
+                if (elapsed >= tenMinutes) {
                     item.status = 'completed'
                     // Lazily persist to DB without blocking response
                     supabaseAdmin
@@ -161,7 +191,7 @@ export async function getIvrUploadHistory(tenantId: string) {
             }
         }
         return item
-    })
+    }))
 
     return mapped
 }
@@ -183,14 +213,14 @@ export async function getAllIvrUploadRequests() {
     if (error) throw new Error(error.message)
 
     const now = Date.now()
-    const fiveMinutes = 5 * 60 * 1000
+    const tenMinutes = 10 * 60 * 1000
 
     const mapped = (data || []).map((item: any) => {
         const meta = parseIvrMeta(item.notes)
         item.meta = meta
 
         if (item.status === 'running' && meta.last_lead_at) {
-            if (now - new Date(meta.last_lead_at).getTime() >= fiveMinutes) {
+            if (now - new Date(meta.last_lead_at).getTime() >= tenMinutes) {
                 item.status = 'completed'
                 supabaseAdmin
                     .from('ivr_upload_requests')

@@ -174,6 +174,7 @@ async function handleWebhook(req: Request) {
         console.warn(`🔍 [DID-DEBUG] CampaignName:`, campaignName);
         console.warn(`🔍 [DID-DEBUG] Initial TARGET_IVR_TENANT_ID:`, TARGET_IVR_TENANT_ID);
 
+        let matchedDid: string | null = null;
         if (uniqueDids.length > 0) {
             const { data: didRecords, error: didError } = await supabaseAdmin
                 .from('tenant_did_registry')
@@ -186,12 +187,14 @@ async function handleWebhook(req: Request) {
 
             if (didRecords && didRecords.length > 0) {
                 TARGET_IVR_TENANT_ID = didRecords[0].tenant_id;
+                matchedDid = didRecords[0].did_number;
                 console.warn(`✅ [CloudConnect DID-ROUTE] Found matching DID ${didRecords[0].did_number} → tenant ${TARGET_IVR_TENANT_ID}`);
             } else {
                 console.warn(`⚠️ [CloudConnect DID-ROUTE] None of the potential DIDs (${uniqueDids.join(', ')}) were found in registry. Falling back to default tenant.`);
                 // Show all DIDs currently in registry for comparison
                 const { data: allDids } = await supabaseAdmin.from('tenant_did_registry').select('did_number, tenant_id, is_active');
                 console.warn(`🔍 [DID-DEBUG] All DIDs in registry:`, JSON.stringify(allDids));
+                matchedDid = uniqueDids[0] || null;
             }
         } else {
             console.warn(`⚠️ [DID-DEBUG] No 10-digit DIDs found to query!`);
@@ -259,7 +262,7 @@ async function handleWebhook(req: Request) {
         const effectiveTenantId = lead.tenant_id || TARGET_IVR_TENANT_ID;
         
         // Track lead arrival for IVR campaign upload status (pending -> running)
-        recordIvrLeadReceived(supabaseAdmin, effectiveTenantId, getParam('did')).catch(err => {
+        recordIvrLeadReceived(supabaseAdmin, effectiveTenantId, matchedDid).catch(err => {
             console.error("[Ozonetel Webhook] Error tracking IVR lead status:", err);
         });
 
@@ -345,7 +348,7 @@ async function handleWebhook(req: Request) {
             lead = createdLead;
             
             // Track lead arrival for IVR campaign upload status (pending -> running)
-            recordIvrLeadReceived(supabaseAdmin, createdLead.tenant_id, getParam('did')).catch(err => {
+            recordIvrLeadReceived(supabaseAdmin, createdLead.tenant_id, matchedDid).catch(err => {
                 console.error("[Ozonetel Webhook] Error tracking IVR lead status:", err);
             });
             

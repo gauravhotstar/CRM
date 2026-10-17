@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
 
     const uniqueDids = Array.from(new Set(potentialDids)).filter(n => n.length === 10);
 
+    let matchedDid: string | null = null;
     if (uniqueDids.length > 0) {
       const { data: didRecords } = await supabaseAdmin
         .from('tenant_did_registry')
@@ -135,9 +136,11 @@ export async function POST(request: NextRequest) {
         
       if (didRecords && didRecords.length > 0) {
         tenantId = didRecords[0].tenant_id;
+        matchedDid = didRecords[0].did_number;
         console.log(`✅ [IVR DID-ROUTE] Found matching DID ${didRecords[0].did_number} → tenant ${tenantId}`);
       } else {
         console.warn(`⚠️ [IVR DID-ROUTE] None of the potential DIDs (${uniqueDids.join(', ')}) were found in registry. Falling back to manual tenant param.`);
+        matchedDid = uniqueDids[0] || null;
       }
     }
     // ===== END DID ROUTING =====
@@ -201,7 +204,7 @@ export async function POST(request: NextRequest) {
                     console.log(`♻️ [IVR DIGIT] Re-assigned existing lead ${existingLead.id} to agent ${agentId}`);
                     
                     // Track lead arrival for IVR campaign upload status (pending -> running)
-                    recordIvrLeadReceived(supabaseAdmin, tenantId, rawDid).catch(err => {
+                    recordIvrLeadReceived(supabaseAdmin, tenantId, matchedDid).catch(err => {
                         console.error("[IVR DIGIT] Error tracking IVR lead status:", err);
                     });
 
@@ -227,7 +230,7 @@ export async function POST(request: NextRequest) {
                     console.log(`✨ [IVR DIGIT] Created new lead for ${dbPhone} → agent ${agentId}`);
                     
                     // Track lead arrival for IVR campaign upload status (pending -> running)
-                    recordIvrLeadReceived(supabaseAdmin, tenantId, rawDid).catch(err => {
+                    recordIvrLeadReceived(supabaseAdmin, tenantId, matchedDid).catch(err => {
                         console.error("[IVR DIGIT] Error tracking IVR lead status:", err);
                     });
 
