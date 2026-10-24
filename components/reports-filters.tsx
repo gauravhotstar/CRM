@@ -3,12 +3,8 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { 
-  DropdownMenu, 
-  DropdownMenuCheckboxItem, 
-  DropdownMenuContent, 
-  DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
 import { 
   Select, 
   SelectContent, 
@@ -45,6 +41,7 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate, 
   const [endDate, setEndDate] = useState(defaultEndDate)
   const [callType, setCallType] = useState(defaultCallType)
   const [telecallerSearch, setTelecallerSearch] = useState("")
+  const [isTelecallerOpen, setIsTelecallerOpen] = useState(false)
   
   const [selectedTelecallers, setSelectedTelecallers] = useState<string[]>(() => {
     const param = searchParams.get("telecaller")
@@ -372,11 +369,11 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate, 
               </button>
             )}
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="w-full h-9.5 justify-between font-normal bg-white dark:bg-slate-900 rounded-xl border-slate-200 dark:border-slate-800 text-xs px-3"
+          <Popover open={isTelecallerOpen} onOpenChange={setIsTelecallerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="w-full h-9.5 flex items-center justify-between font-normal bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-800 text-xs px-3 shadow-xs transition-colors cursor-pointer text-left"
               >
                 {selectedTelecallers.length === 0 ? (
                   <span className="text-slate-500 dark:text-slate-400 font-medium">All Telecallers ({telecallers.length})</span>
@@ -385,73 +382,132 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate, 
                     {telecallers.find(t => t.id === selectedTelecallers[0])?.full_name || "1 Telecaller"}
                   </span>
                 ) : (
-                  <span className="font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-                    <UserCheck className="h-3.5 w-3.5" />
+                  <span className="font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 truncate">
+                    <UserCheck className="h-3.5 w-3.5 shrink-0" />
                     {selectedTelecallers.length} Telecallers Selected
                   </span>
                 )}
-                <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50 flex-shrink-0" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[280px] p-2 rounded-xl shadow-lg border-slate-200 dark:border-slate-800" align="start">
-              <div className="p-1 mb-1">
-                <div className="relative">
-                  <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-slate-400" />
-                  <Input
-                    placeholder="Search telecaller..."
-                    value={telecallerSearch}
-                    onChange={(e) => setTelecallerSearch(e.target.value)}
-                    className="h-8 pl-8 text-xs rounded-lg"
-                  />
+                <ChevronDown className={`ml-1.5 h-3.5 w-3.5 opacity-50 shrink-0 transition-transform duration-200 ${isTelecallerOpen ? "rotate-180" : ""}`} />
+              </button>
+            </PopoverTrigger>
+
+            <PopoverContent 
+              className="w-[290px] p-2.5 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-50" 
+              align="start"
+              sideOffset={4}
+            >
+              {/* Search Bar */}
+              <div className="relative mb-2">
+                <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <Input
+                  placeholder="Search telecaller..."
+                  value={telecallerSearch}
+                  onChange={(e) => setTelecallerSearch(e.target.value)}
+                  className="h-8 pl-8 pr-7 text-xs rounded-lg bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                />
+                {telecallerSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setTelecallerSearch("")}
+                    className="absolute right-2 top-2 p-0.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex items-center justify-between px-1 py-1.5 text-xs border-y border-slate-100 dark:border-slate-800 mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTelecallers([])
+                  }}
+                  className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                    selectedTelecallers.length === 0
+                      ? "font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/40"
+                      : "font-semibold text-slate-600 hover:text-blue-600"
+                  }`}
+                >
+                  All ({telecallers.length})
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllTelecallers}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearTelecallerSelection}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-700"
+                  >
+                    Clear
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between px-2 py-1.5 text-xs border-y border-slate-100 dark:border-slate-800 mb-1">
-                <button
-                  type="button"
-                  onClick={selectAllTelecallers}
-                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
-                >
-                  Select All
-                </button>
-                <button
-                  type="button"
-                  onClick={clearTelecallerSelection}
-                  className="text-xs font-medium text-slate-500 hover:text-slate-700"
-                >
-                  Clear Selection
-                </button>
-              </div>
-
-              <div className="max-h-[240px] overflow-y-auto space-y-0.5">
+              {/* Scrollable Telecaller List */}
+              <div className="max-h-[240px] overflow-y-auto space-y-0.5 pr-1">
                 {filteredTelecallers.map((tc) => {
                   const isChecked = selectedTelecallers.includes(tc.id)
                   const isOnline = telecallerStatus[tc.id]
                   return (
-                    <DropdownMenuCheckboxItem
+                    <div
                       key={tc.id}
-                      checked={isChecked}
-                      onCheckedChange={() => toggleTelecaller(tc.id)}
-                      className="text-xs py-1.5 rounded-lg cursor-pointer flex items-center justify-between"
+                      onClick={() => toggleTelecaller(tc.id)}
+                      className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+                        isChecked
+                          ? "bg-blue-50/80 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 font-semibold"
+                          : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                      }`}
                     >
-                      <div className="flex items-center gap-2 truncate">
-                        <span 
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${isOnline ? "bg-emerald-500 shadow-xs shadow-emerald-500/50" : "bg-slate-300 dark:bg-slate-600"}`}
+                      <div className="flex items-center gap-2.5 truncate">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={() => toggleTelecaller(tc.id)}
+                          className="rounded"
+                        />
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            isOnline ? "bg-emerald-500 shadow-xs shadow-emerald-500/50" : "bg-slate-300 dark:bg-slate-600"
+                          }`}
                           title={isOnline ? "Checked in today" : "Offline / Not checked in"}
                         />
-                        <span className="truncate font-medium">{tc.full_name}</span>
+                        <span className="truncate">{tc.full_name}</span>
                       </div>
-                    </DropdownMenuCheckboxItem>
+                    </div>
                   )
                 })}
                 {filteredTelecallers.length === 0 && (
-                  <div className="text-center py-3 text-xs text-slate-400">
+                  <div className="text-center py-4 text-xs text-slate-400">
                     No telecaller found
                   </div>
                 )}
               </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
+
+              {/* Apply Selection inside Popover */}
+              <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-medium text-slate-500">
+                  {selectedTelecallers.length === 0 ? "All included" : `${selectedTelecallers.length} selected`}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setIsTelecallerOpen(false)
+                    pushNavigation(startDate, endDate, selectedTelecallers, callType)
+                  }}
+                  className="h-7 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3"
+                >
+                  Apply Selection
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div className="flex items-center gap-2">
