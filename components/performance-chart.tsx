@@ -2,17 +2,17 @@
 
 import { useEffect, useState, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
-import { Phone, Users, CheckCircle2, TrendingUp } from "lucide-react"
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { Badge } from "@/components/ui/badge"
 
 interface PerformanceChartProps {
   startDate: string
   endDate: string
   telecallerId?: string
+  callType?: string
 }
 
-export function PerformanceChart({ startDate, endDate, telecallerId }: PerformanceChartProps) {
+export function PerformanceChart({ startDate, endDate, telecallerId, callType = "agent" }: PerformanceChartProps) {
   const [data, setData] = useState<Array<{ label: string; leads: number; calls: number; connected: number }>>([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeSeries, setActiveSeries] = useState<Record<string, boolean>>({
@@ -30,7 +30,6 @@ export function PerformanceChart({ startDate, endDate, telecallerId }: Performan
     const fetchData = async () => {
       setIsLoading(true)
       try {
-        // 1. Fetch the logged-in user's Tenant ID
         const { data: { user } } = await supabase.auth.getUser()
         let tenantId: string | null = null
         let role: string | null = null
@@ -46,25 +45,37 @@ export function PerformanceChart({ startDate, endDate, telecallerId }: Performan
           role = profile?.role
         }
 
-        // 2. Fetch data for range
         let leadsQuery = supabase
           .from("leads")
           .select("created_at")
           .gte("created_at", `${startDate}T00:00:00`)
           .lte("created_at", `${endDate}T23:59:59`)
-          .limit(10000)
+          .limit(20000)
 
         let callsQuery = supabase
           .from("call_logs")
-          .select("created_at, call_status, disposition, duration_seconds")
+          .select("created_at, call_status, disposition, duration_seconds, call_type")
           .gte("created_at", `${startDate}T00:00:00`)
           .lte("created_at", `${endDate}T23:59:59`)
-          .limit(10000)
+          .limit(20000)
 
         // Strict Tenant Isolation
         if (tenantId && role !== 'super_admin') {
           leadsQuery = leadsQuery.eq('tenant_id', tenantId)
           callsQuery = callsQuery.eq('tenant_id', tenantId)
+        }
+
+        // Call Type Filter
+        if (callType === "agent") {
+          callsQuery = callsQuery.in('call_type', ['outbound', 'outbound_c2c'])
+        } else if (callType === "outbound") {
+          callsQuery = callsQuery.eq('call_type', 'outbound')
+        } else if (callType === "c2c") {
+          callsQuery = callsQuery.eq('call_type', 'outbound_c2c')
+        } else if (callType === "ivr") {
+          callsQuery = callsQuery.eq('call_type', 'ivr')
+        } else if (callType === "inbound") {
+          callsQuery = callsQuery.eq('call_type', 'inbound')
         }
 
         if (telecallerId) {
@@ -79,12 +90,22 @@ export function PerformanceChart({ startDate, endDate, telecallerId }: Performan
 
         if (!isMounted) return
 
-        // Helper to detect if a call was connected
+        // Accurate connection check
         const isConnected = (call: any) => {
           const status = (call.call_status || "").toLowerCase()
           const disp = (call.disposition || "").toUpperCase()
-          const dur = Number(call.duration_seconds) || 0
-          return status === "connected" || status === "answered" || status === "completed" || disp === "ANSWERED" || dur > 0
+          if (
+            status === "notanswered" || 
+            status === "no_answer" || 
+            status === "failed" ||
+            disp === "NOANSWER" || 
+            disp === "CANCEL" || 
+            disp === "BUSY" || 
+            disp === "CONGESTION"
+          ) {
+            return false
+          }
+          return status === "connected" || status === "answered" || disp === "ANSWERED"
         }
 
         if (isSingleDay) {
@@ -174,7 +195,7 @@ export function PerformanceChart({ startDate, endDate, telecallerId }: Performan
     return () => {
       isMounted = false
     }
-  }, [startDate, endDate, telecallerId, supabase, isSingleDay])
+  }, [startDate, endDate, telecallerId, callType, supabase, isSingleDay])
 
   const totals = useMemo(() => {
     return data.reduce(
@@ -292,7 +313,7 @@ export function PerformanceChart({ startDate, endDate, telecallerId }: Performan
               }}
               formatter={(value: any, name: any) => [
                 Number(value).toLocaleString(), 
-                name === "calls" ? "Total Calls" : name === "connected" ? "Connected Calls" : "New Leads"
+                name === "calls" ? "Calls" : name === "connected" ? "Connected Calls" : "New Leads"
               ]}
             />
 

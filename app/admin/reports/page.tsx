@@ -23,7 +23,8 @@ export const dynamic = "force-dynamic"
 interface SearchParams {
   start_date?: string
   end_date?: string
-  telecaller?: string 
+  telecaller?: string
+  call_type?: string
 }
 
 function formatLocalDate(d: Date): string {
@@ -63,6 +64,7 @@ export default async function ReportsPage({
 
   const startDate = searchParams.start_date || formatLocalDate(defaultStart)
   const endDate = searchParams.end_date || formatLocalDate(defaultEnd)
+  const callType = searchParams.call_type || "agent"
 
   const start = new Date(startDate)
   const end = new Date(endDate)
@@ -116,7 +118,7 @@ export default async function ReportsPage({
 
     let callsQuery = supabase
       .from('call_logs')
-      .select('user_id, call_status, disposition, duration_seconds, created_at')
+      .select('user_id, call_status, disposition, duration_seconds, created_at, call_type')
       .gte('created_at', `${s}T00:00:00`)
       .lte('created_at', `${e}T23:59:59`)
       .limit(20000)
@@ -124,6 +126,19 @@ export default async function ReportsPage({
     if (tenantId && role !== 'super_admin') {
       leadsQuery = leadsQuery.eq('tenant_id', tenantId)
       callsQuery = callsQuery.eq('tenant_id', tenantId)
+    }
+
+    // Call Type filter
+    if (callType === "agent") {
+      callsQuery = callsQuery.in('call_type', ['outbound', 'outbound_c2c'])
+    } else if (callType === "outbound") {
+      callsQuery = callsQuery.eq('call_type', 'outbound')
+    } else if (callType === "c2c") {
+      callsQuery = callsQuery.eq('call_type', 'outbound_c2c')
+    } else if (callType === "ivr") {
+      callsQuery = callsQuery.eq('call_type', 'ivr')
+    } else if (callType === "inbound") {
+      callsQuery = callsQuery.eq('call_type', 'inbound')
     }
 
     if (filterId) {
@@ -161,8 +176,18 @@ export default async function ReportsPage({
     const isConnected = (call: any) => {
       const st = (call.call_status || "").toLowerCase()
       const disp = (call.disposition || "").toUpperCase()
-      const dur = Number(call.duration_seconds) || 0
-      return st === "connected" || st === "answered" || st === "completed" || disp === "ANSWERED" || dur > 0
+      if (
+        st === "notanswered" || 
+        st === "no_answer" || 
+        st === "failed" ||
+        disp === "NOANSWER" || 
+        disp === "CANCEL" || 
+        disp === "BUSY" || 
+        disp === "CONGESTION"
+      ) {
+        return false
+      }
+      return st === "connected" || st === "answered" || disp === "ANSWERED"
     }
 
     const totalCalls = allCalls.length
@@ -198,8 +223,16 @@ export default async function ReportsPage({
 
     const st = (c.call_status || "").toLowerCase()
     const disp = (c.disposition || "").toUpperCase()
-    const dur = Number(c.duration_seconds) || 0
-    if (st === "connected" || st === "answered" || st === "completed" || disp === "ANSWERED" || dur > 0) {
+    if (
+      st !== "notanswered" && 
+      st !== "no_answer" && 
+      st !== "failed" &&
+      disp !== "NOANSWER" && 
+      disp !== "CANCEL" && 
+      disp !== "BUSY" && 
+      disp !== "CONGESTION" &&
+      (st === "connected" || st === "answered" || disp === "ANSWERED")
+    ) {
       winnerMap[c.user_id].connected += 1
     }
   })
@@ -243,7 +276,7 @@ export default async function ReportsPage({
 
   if (isToday) {
     summaryTitle = "Live Shift Performance"
-    summaryText = `Today's shift is actively underway. The team has completed ${current.calls.toLocaleString()} calls with a ${currentConnectRate.toFixed(1)}% connect rate (${current.connected.toLocaleString()} connected). ${current.new.toLocaleString()} new leads received today.`
+    summaryText = `Today's shift is actively underway. The team has completed ${current.calls.toLocaleString()} ${callType === "agent" ? "agent calls" : "calls"} with a ${currentConnectRate.toFixed(1)}% connect rate (${current.connected.toLocaleString()} answered). ${current.new.toLocaleString()} new leads received today.`
     summaryColor = "bg-emerald-50/70 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/60"
     SummaryIcon = CheckCircle2
   } else if (leadTrend >= 10 && currentConnectRate >= 35) {
@@ -253,12 +286,12 @@ export default async function ReportsPage({
     SummaryIcon = TrendingUp
   } else if (leadTrend < -15) {
     summaryTitle = "Lead Inflow Notice"
-    summaryText = `Lead volume for this period is down ${leadTrend}% compared to the prior period, while outreach logged ${current.calls.toLocaleString()} calls. Review lead generation campaigns.`
+    summaryText = `Lead volume for this period is down ${leadTrend}% compared to the prior period, while outreach logged ${current.calls.toLocaleString()} ${callType === "agent" ? "agent calls" : "calls"}. Review lead generation campaigns.`
     summaryColor = "bg-amber-50/70 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60"
     SummaryIcon = AlertCircle
   } else {
     summaryTitle = "Consistent Workforce Execution"
-    summaryText = `Team logged ${current.calls.toLocaleString()} calls with a ${currentConnectRate.toFixed(1)}% connect rate. ${current.qualified.toLocaleString()} leads actively qualified in pipeline.`
+    summaryText = `Team logged ${current.calls.toLocaleString()} ${callType === "agent" ? "agent calls" : "calls"} with a ${currentConnectRate.toFixed(1)}% connect rate. ${current.qualified.toLocaleString()} leads actively qualified in pipeline.`
     summaryColor = "bg-blue-50/70 text-blue-800 dark:bg-blue-950/20 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/60"
     SummaryIcon = Sparkles
   }
@@ -281,7 +314,7 @@ export default async function ReportsPage({
       iconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
     },
     {
-      title: "Calls Logged",
+      title: callType === "agent" ? "Agent Calls Logged" : callType === "all" ? "Total Telephony Calls" : `${callType.toUpperCase()} Calls Logged`,
       value: current.calls.toLocaleString(),
       trend: callsTrend,
       comparison: isToday ? "vs yesterday" : "vs previous period",
@@ -346,7 +379,7 @@ export default async function ReportsPage({
         </div>
 
         <div className="flex items-center gap-3">
-          <ExportButtons startDate={startDate} endDate={endDate} telecallerId={filterId} />
+          <ExportButtons startDate={startDate} endDate={endDate} telecallerId={filterId} callType={callType} />
         </div>
       </div>
 
@@ -358,6 +391,7 @@ export default async function ReportsPage({
               telecallers={telecallers || []} 
               defaultStartDate={startDate} 
               defaultEndDate={endDate} 
+              defaultCallType={callType}
             />
           </CardContent>
         </Card>
@@ -468,7 +502,7 @@ export default async function ReportsPage({
           </CardHeader>
           <CardContent className="pt-4">
             <Suspense fallback={<div className="h-64 bg-slate-50 dark:bg-slate-900/50 animate-pulse rounded-xl flex items-center justify-center text-slate-400 text-sm">Loading Chart...</div>}>
-              <PerformanceChart startDate={startDate} endDate={endDate} telecallerId={filterId} />
+              <PerformanceChart startDate={startDate} endDate={endDate} telecallerId={filterId} callType={callType} />
             </Suspense>
           </CardContent>
         </Card>
@@ -544,7 +578,7 @@ export default async function ReportsPage({
         </CardHeader>
         <CardContent className="pt-4 px-2 sm:px-6">
           <Suspense fallback={<div className="h-32 bg-slate-50 dark:bg-slate-900/50 animate-pulse rounded-xl" />}>
-            <TelecallerPerformance startDate={startDate} endDate={endDate} telecallerId={filterId} />
+            <TelecallerPerformance startDate={startDate} endDate={endDate} telecallerId={filterId} callType={callType} />
           </Suspense>
         </CardContent>
       </Card>

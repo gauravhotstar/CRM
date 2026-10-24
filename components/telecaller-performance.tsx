@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { 
   CheckCircle, Minus, Clock, Search, ArrowUpDown, 
-  Download, ArrowUp, ArrowDown, User, PhoneCall, Trophy
+  Download, Trophy
 } from "lucide-react"
 
 interface PerformanceData {
@@ -37,12 +37,13 @@ interface TelecallerPerformanceProps {
   startDate: string
   endDate: string
   telecallerId?: string
+  callType?: string
 }
 
 type SortField = "calls" | "leads" | "connected" | "connectRate" | "convRate" | "duration" | "name"
 type SortOrder = "asc" | "desc"
 
-export function TelecallerPerformance({ startDate, endDate, telecallerId }: TelecallerPerformanceProps) {
+export function TelecallerPerformance({ startDate, endDate, telecallerId, callType = "agent" }: TelecallerPerformanceProps) {
   const [data, setData] = useState<PerformanceData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -51,7 +52,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
 
   const supabase = createClient()
 
-  // Format helper for duration
   const formatDuration = (seconds: number) => {
     if (!seconds || seconds === Infinity || isNaN(seconds)) return "00:00:00"
     const hrs = Math.floor(seconds / 3600)
@@ -71,7 +71,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
     const fetchData = async () => {
       setIsLoading(true)
       try {
-        // 1. Fetch current logged-in user & tenant
         const { data: { user } } = await supabase.auth.getUser()
         let tenantId: string | null = null
         let role: string | null = null
@@ -87,7 +86,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
           role = profile?.role
         }
 
-        // 2. Base Telecallers Query (scoped to tenant)
         let userQuery = supabase
           .from("users")
           .select("id, full_name")
@@ -104,39 +102,48 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
           userQuery = userQuery.eq("role", "telecaller")
         }
 
-        // 3. Attendance (Today)
         const today = new Date().toISOString().split('T')[0]
         let attendanceQuery = supabase.from("attendance").select("user_id, check_in").eq("date", today)
         if (tenantId && role !== 'super_admin') {
           attendanceQuery = attendanceQuery.eq("tenant_id", tenantId)
         }
 
-        // 4. Leads (Period)
         let leadsQuery = supabase
           .from("leads")
           .select("assigned_to, status")
           .gte("created_at", `${startDate}T00:00:00`)
           .lte("created_at", `${endDate}T23:59:59`)
-          .limit(10000)
+          .limit(20000)
 
         if (tenantId && role !== 'super_admin') {
           leadsQuery = leadsQuery.eq("tenant_id", tenantId)
         }
 
-        // 5. Calls (Period)
         let callsQuery = supabase
           .from("call_logs")
-          .select("user_id, call_status, duration_seconds, created_at, disposition")
+          .select("user_id, call_status, duration_seconds, created_at, disposition, call_type")
           .gte("created_at", `${startDate}T00:00:00`)
           .lte("created_at", `${endDate}T23:59:59`)
           .order("created_at", { ascending: false })
-          .limit(10000)
+          .limit(20000)
 
         if (tenantId && role !== 'super_admin') {
           callsQuery = callsQuery.eq("tenant_id", tenantId)
         }
 
-        // Parallel Execution
+        // Apply Call Channel Filter
+        if (callType === "agent") {
+          callsQuery = callsQuery.in('call_type', ['outbound', 'outbound_c2c'])
+        } else if (callType === "outbound") {
+          callsQuery = callsQuery.eq('call_type', 'outbound')
+        } else if (callType === "c2c") {
+          callsQuery = callsQuery.eq('call_type', 'outbound_c2c')
+        } else if (callType === "ivr") {
+          callsQuery = callsQuery.eq('call_type', 'ivr')
+        } else if (callType === "inbound") {
+          callsQuery = callsQuery.eq('call_type', 'inbound')
+        }
+
         const [
           { data: telecallers },
           { data: attendance },
@@ -148,14 +155,12 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
 
         const attendanceMap = new Map(attendance?.map((a: any) => [a.user_id, !!a.check_in]))
         
-        // Group Leads
         const leadsByUser: Record<string, any[]> = {}
         leads?.forEach((l: any) => {
           if (!leadsByUser[l.assigned_to]) leadsByUser[l.assigned_to] = []
           leadsByUser[l.assigned_to].push(l)
         })
 
-        // Group Calls
         const callsByUser: Record<string, any[]> = {}
         calls?.forEach((c: any) => {
           if (!callsByUser[c.user_id]) callsByUser[c.user_id] = []
@@ -171,8 +176,18 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
         const isCallConnected = (call: any) => {
           const status = (call.call_status || "").toLowerCase()
           const disp = (call.disposition || "").toUpperCase()
-          const dur = Number(call.duration_seconds) || 0
-          return status === "connected" || status === "answered" || status === "completed" || disp === "ANSWERED" || dur > 0
+          if (
+            status === "notanswered" || 
+            status === "no_answer" || 
+            status === "failed" ||
+            disp === "NOANSWER" || 
+            disp === "CANCEL" || 
+            disp === "BUSY" || 
+            disp === "CONGESTION"
+          ) {
+            return false
+          }
+          return status === "connected" || status === "answered" || disp === "ANSWERED"
         }
 
         const isCallBusy = (call: any) => {
@@ -189,7 +204,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
           const totalCallDuration = userCalls.reduce((sum, call) => sum + (Number(call.duration_seconds) || 0), 0)
           const avgCallDuration = totalCalls > 0 ? totalCallDuration / totalCalls : 0
 
-          // Calculate Gap
           let avgTimeBetweenCalls = 0
           if (userCalls.length > 1) {
             const sortedTimes = [...userCalls].sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
@@ -232,7 +246,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
           }
         })
 
-        // Default sort by total calls descending
         performanceData.sort((a, b) => b.totalCalls - a.totalCalls)
         setData(performanceData)
 
@@ -248,7 +261,7 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
     return () => {
       isMounted = false
     }
-  }, [startDate, endDate, telecallerId, supabase])
+  }, [startDate, endDate, telecallerId, callType, supabase])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -305,7 +318,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
     return list
   }, [data, searchQuery, sortField, sortOrder])
 
-  // Team summary totals
   const totals = useMemo(() => {
     const totalCalls = data.reduce((s, d) => s + d.totalCalls, 0)
     const totalConnected = data.reduce((s, d) => s + d.connectedCalls, 0)
@@ -403,6 +415,9 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
         </div>
 
         <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-[11px] font-semibold text-blue-700 bg-blue-50 dark:bg-blue-950/40 border-blue-200">
+            {callType === "agent" ? "Filtered: Agent Calls (Outbound & C2C)" : `Channel: ${callType.toUpperCase()}`}
+          </Badge>
           <Button
             variant="outline"
             size="sm"
@@ -492,7 +507,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
           <tbody className="text-xs divide-y divide-slate-100 dark:divide-slate-800/80">
             {sortedData.map((telecaller, idx) => (
               <tr key={telecaller.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition-colors group">
-                {/* Telecaller Avatar and Name */}
                 <td className="py-3 px-4 font-medium sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50/50 dark:group-hover:bg-slate-900/40 z-10 transition-colors border-r border-slate-100 dark:border-slate-800/60">
                   <div className="flex items-center gap-2.5">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-[11px] relative shadow-xs ring-2 ${
@@ -518,7 +532,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
                   </div>
                 </td>
                 
-                {/* Status Badge */}
                 <td className="py-3 px-4">
                   <Badge className={
                     telecaller.isCheckedIn 
@@ -529,22 +542,18 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
                   </Badge>
                 </td>
 
-                {/* Leads Count */}
                 <td className="py-3 px-4 text-center font-bold text-slate-700 dark:text-slate-300 text-[13px]">
                   {telecaller.totalLeads}
                 </td>
                 
-                {/* Calls Count */}
                 <td className="py-3 px-4 text-center font-extrabold text-blue-600 dark:text-blue-400 text-[13px]">
                   {telecaller.totalCalls}
                 </td>
 
-                {/* Connected Calls */}
                 <td className="py-3 px-4 text-center font-extrabold text-emerald-600 dark:text-emerald-400 text-[13px]">
                   {telecaller.connectedCalls}
                 </td>
                 
-                {/* Durations */}
                 <td className="py-3 px-4">
                   <div className="flex flex-col gap-0.5">
                     <span className="font-semibold text-slate-800 dark:text-slate-200 text-[12px]">
@@ -556,12 +565,10 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
                   </div>
                 </td>
 
-                {/* Last Call */}
                 <td className="py-3 px-4 text-center font-mono text-[11px] text-slate-600 dark:text-slate-300">
                   {formatTime(telecaller.lastCallTime)}
                 </td>
                 
-                {/* Connect Rate with Progress Indicator */}
                 <td className="py-3 px-4">
                   <div className="flex flex-col items-center gap-1.5 min-w-[85px]">
                     <span className="font-extrabold text-slate-900 dark:text-slate-100 text-[13px]">
@@ -577,7 +584,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
                   </div>
                 </td>
 
-                {/* Conversion Rate with Progress Indicator */}
                 <td className="py-3 px-4">
                   <div className="flex flex-col items-center gap-1.5 min-w-[85px]">
                     <span className="font-extrabold text-slate-900 dark:text-slate-100 text-[13px]">
@@ -596,7 +602,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
                   </div>
                 </td>
 
-                {/* Status Breakdown Pills */}
                 <td className="py-3 px-4">
                   <div className="flex gap-1.5">
                     <div 
@@ -634,7 +639,6 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId }: Tele
             )}
           </tbody>
 
-          {/* Summary Footer */}
           {sortedData.length > 0 && (
             <tfoot className="border-t-2 border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 font-bold text-xs">
               <tr>

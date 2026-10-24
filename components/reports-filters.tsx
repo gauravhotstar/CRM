@@ -9,7 +9,14 @@ import {
   DropdownMenuContent, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu"
-import { Search, X, ChevronDown, UserCheck, Calendar as CalendarIcon, RefreshCw } from "lucide-react"
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select"
+import { Search, X, ChevronDown, UserCheck, Calendar as CalendarIcon, RefreshCw, PhoneCall } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useEffect, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -19,9 +26,9 @@ interface ReportsFiltersProps {
   telecallers: Array<{ id: string; full_name: string }>
   defaultStartDate: string
   defaultEndDate: string
+  defaultCallType?: string
 }
 
-// Format local Date object to YYYY-MM-DD string without UTC offset issues
 function formatLocalDate(d: Date): string {
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, "0")
@@ -29,16 +36,16 @@ function formatLocalDate(d: Date): string {
   return `${year}-${month}-${day}`
 }
 
-export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate }: ReportsFiltersProps) {
+export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate, defaultCallType = "agent" }: ReportsFiltersProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [startDate, setStartDate] = useState(defaultStartDate)
   const [endDate, setEndDate] = useState(defaultEndDate)
+  const [callType, setCallType] = useState(defaultCallType)
   const [telecallerSearch, setTelecallerSearch] = useState("")
   
-  // Initialize selected telecallers from URL params (comma separated)
   const [selectedTelecallers, setSelectedTelecallers] = useState<string[]>(() => {
     const param = searchParams.get("telecaller")
     if (!param || param === "all") return []
@@ -47,19 +54,18 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate }
 
   const [telecallerStatus, setTelecallerStatus] = useState<Record<string, boolean>>({})
 
-  // Keep state synced if props or URL search params change
   useEffect(() => {
     setStartDate(defaultStartDate)
     setEndDate(defaultEndDate)
+    setCallType(defaultCallType)
     const param = searchParams.get("telecaller")
     if (!param || param === "all") {
       setSelectedTelecallers([])
     } else {
       setSelectedTelecallers(param.split(",").filter(Boolean))
     }
-  }, [defaultStartDate, defaultEndDate, searchParams])
+  }, [defaultStartDate, defaultEndDate, defaultCallType, searchParams])
 
-  // Fetch telecaller attendance status for today
   useEffect(() => {
     const fetchTelecallerStatus = async () => {
       try {
@@ -84,10 +90,11 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate }
     fetchTelecallerStatus()
   }, [supabase])
 
-  const pushNavigation = (s: string, e: string, tcs: string[]) => {
+  const pushNavigation = (s: string, e: string, tcs: string[], ct: string) => {
     const params = new URLSearchParams()
     if (s) params.set("start_date", s)
     if (e) params.set("end_date", e)
+    if (ct && ct !== "agent") params.set("call_type", ct)
     if (tcs.length > 0) {
       params.set("telecaller", tcs.join(","))
     }
@@ -95,19 +102,20 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate }
   }
 
   const applyFilters = () => {
-    pushNavigation(startDate, endDate, selectedTelecallers)
+    pushNavigation(startDate, endDate, selectedTelecallers, callType)
   }
 
   const clearFilters = () => {
     const end = new Date()
     const start = new Date()
-    start.setDate(end.getDate() - 30)
+    start.setDate(end.getDate() - 29)
 
     const s = formatLocalDate(start)
     const e = formatLocalDate(end)
 
     setStartDate(s)
     setEndDate(e)
+    setCallType("agent")
     setSelectedTelecallers([])
     router.push("/admin/reports")
   }
@@ -145,10 +153,9 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate }
 
     setStartDate(s)
     setEndDate(e)
-    pushNavigation(s, e, selectedTelecallers)
+    pushNavigation(s, e, selectedTelecallers, callType)
   }
 
-  // Determine active preset if matching
   const activePreset = useMemo(() => {
     const today = new Date()
     const todayStr = formatLocalDate(today)
@@ -167,10 +174,6 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate }
     const d30 = new Date(today)
     d30.setDate(d30.getDate() - 29)
     if (startDate === formatLocalDate(d30) && endDate === todayStr) return "30days"
-
-    const d30Old = new Date(today)
-    d30Old.setDate(d30Old.getDate() - 30)
-    if (startDate === formatLocalDate(d30Old) && endDate === todayStr) return "30days"
 
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
     if (startDate === formatLocalDate(startOfMonth) && endDate === todayStr) return "thisMonth"
@@ -300,7 +303,7 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate }
       </div>
 
       {/* Main Filter Controls */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3.5 items-end">
         <div>
           <Label htmlFor="start-date" className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 block">
             Start Date
@@ -325,6 +328,33 @@ export function ReportsFilters({ telecallers, defaultStartDate, defaultEndDate }
             onChange={(e) => setEndDate(e.target.value)}
             className="h-9.5 text-xs bg-white dark:bg-slate-900 rounded-xl border-slate-200 dark:border-slate-800"
           />
+        </div>
+
+        <div>
+          <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 block flex items-center gap-1">
+            <PhoneCall className="h-3 w-3 text-blue-600" /> Call Channel
+          </Label>
+          <Select 
+            value={callType} 
+            onValueChange={(val) => {
+              setCallType(val)
+              pushNavigation(startDate, endDate, selectedTelecallers, val)
+            }}
+          >
+            <SelectTrigger className="h-9.5 text-xs bg-white dark:bg-slate-900 rounded-xl border-slate-200 dark:border-slate-800 font-medium">
+              <SelectValue placeholder="Call Channel" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl shadow-lg border-slate-200 dark:border-slate-800 text-xs">
+              <SelectItem value="agent" className="font-semibold text-blue-600">
+                Agent Calls (Outbound & C2C)
+              </SelectItem>
+              <SelectItem value="outbound">Direct Outbound Only</SelectItem>
+              <SelectItem value="c2c">Click-to-Call (C2C) Only</SelectItem>
+              <SelectItem value="ivr">IVR Campaign Blasts</SelectItem>
+              <SelectItem value="inbound">Inbound Helpline</SelectItem>
+              <SelectItem value="all">All Telephony Activity</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div>

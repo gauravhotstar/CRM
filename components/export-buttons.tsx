@@ -9,9 +9,10 @@ interface ExportButtonsProps {
   startDate: string
   endDate: string
   telecallerId?: string
+  callType?: string
 }
 
-export function ExportButtons({ startDate, endDate, telecallerId }: ExportButtonsProps) {
+export function ExportButtons({ startDate, endDate, telecallerId, callType = "agent" }: ExportButtonsProps) {
   const [isExporting, setIsExporting] = useState<string | null>(null)
   const supabase = createClient()
 
@@ -148,6 +149,19 @@ export function ExportButtons({ startDate, endDate, telecallerId }: ExportButton
         query = query.eq("tenant_id", tenantId)
       }
 
+      // Call Type filter
+      if (callType === "agent") {
+        query = query.in('call_type', ['outbound', 'outbound_c2c'])
+      } else if (callType === "outbound") {
+        query = query.eq('call_type', 'outbound')
+      } else if (callType === "c2c") {
+        query = query.eq('call_type', 'outbound_c2c')
+      } else if (callType === "ivr") {
+        query = query.eq('call_type', 'ivr')
+      } else if (callType === "inbound") {
+        query = query.eq('call_type', 'inbound')
+      }
+
       if (telecallerId) {
         const ids = telecallerId.split(',').filter(Boolean)
         if (ids.length > 0) query = query.in("user_id", ids)
@@ -161,7 +175,19 @@ export function ExportButtons({ startDate, endDate, telecallerId }: ExportButton
           const status = (call.call_status || "").toLowerCase()
           const disp = (call.disposition || "").toUpperCase()
           const dur = Number(call.duration_seconds) || 0
-          const isConn = status === "connected" || status === "answered" || status === "completed" || disp === "ANSWERED" || dur > 0
+          
+          let isConn = false
+          if (
+            status !== "notanswered" && 
+            status !== "no_answer" && 
+            status !== "failed" &&
+            disp !== "NOANSWER" && 
+            disp !== "CANCEL" && 
+            disp !== "BUSY" && 
+            disp !== "CONGESTION"
+          ) {
+            isConn = status === "connected" || status === "answered" || disp === "ANSWERED"
+          }
 
           return {
             telecaller: call.users?.full_name || "Unknown Agent",
@@ -239,13 +265,26 @@ export function ExportButtons({ startDate, endDate, telecallerId }: ExportButton
       // 3. Fetch call logs in period
       let callsQuery = supabase
         .from("call_logs")
-        .select("user_id, call_status, disposition, duration_seconds")
+        .select("user_id, call_status, disposition, duration_seconds, call_type")
         .gte("created_at", `${startDate}T00:00:00`)
         .lte("created_at", `${endDate}T23:59:59`)
         .limit(20000)
 
       if (tenantId && role !== 'super_admin') {
         callsQuery = callsQuery.eq("tenant_id", tenantId)
+      }
+
+      // Call Type filter
+      if (callType === "agent") {
+        callsQuery = callsQuery.in('call_type', ['outbound', 'outbound_c2c'])
+      } else if (callType === "outbound") {
+        callsQuery = callsQuery.eq('call_type', 'outbound')
+      } else if (callType === "c2c") {
+        callsQuery = callsQuery.eq('call_type', 'outbound_c2c')
+      } else if (callType === "ivr") {
+        callsQuery = callsQuery.eq('call_type', 'ivr')
+      } else if (callType === "inbound") {
+        callsQuery = callsQuery.eq('call_type', 'inbound')
       }
 
       // Execute all 3 queries in parallel!
@@ -262,8 +301,18 @@ export function ExportButtons({ startDate, endDate, telecallerId }: ExportButton
       const isCallConnected = (call: any) => {
         const status = (call.call_status || "").toLowerCase()
         const disp = (call.disposition || "").toUpperCase()
-        const dur = Number(call.duration_seconds) || 0
-        return status === "connected" || status === "answered" || status === "completed" || disp === "ANSWERED" || dur > 0
+        if (
+          status === "notanswered" || 
+          status === "no_answer" || 
+          status === "failed" ||
+          disp === "NOANSWER" || 
+          disp === "CANCEL" || 
+          disp === "BUSY" || 
+          disp === "CONGESTION"
+        ) {
+          return false
+        }
+        return status === "connected" || status === "answered" || disp === "ANSWERED"
       }
 
       const qualifiedStatuses = new Set([
