@@ -160,13 +160,18 @@ export async function sendWhatsAppText(leadId: string, customerPhone: string, te
     const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, text);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
+        tenant_id: profile?.tenant_id || null,
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
         message_type: 'text', content: text, fonada_message_id: msgId, status: 'sent'
     });
 
     if (insertError) throw new Error(`Database Insert Failed: ${insertError.message}`);
 
-    await supabase.from("leads").update({ last_message_at: new Date().toISOString() }).eq("id", leadId);
+    await supabase.from("leads").update({ 
+      last_message_at: new Date().toISOString(),
+      last_message_content: text.substring(0, 100),
+      last_message_type: 'outbound'
+    }).eq("id", leadId);
     return { success: true };
   } catch (error: any) {
     console.error("WA Text Send Error:", error);
@@ -206,13 +211,18 @@ export async function sendMissedCallMessage(leadId: string, customerPhone: strin
     const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName, buttonsPayload, [customerName, agentName]);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
+        tenant_id: agent.tenant_id || null,
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
         message_type: 'template', content: textMessage, fonada_message_id: msgId, status: 'sent'
     });
 
     if (insertError) throw new Error(`Database Insert Failed: ${insertError.message}`);
 
-    await supabase.from("leads").update({ last_message_at: new Date().toISOString() }).eq("id", leadId);
+    await supabase.from("leads").update({ 
+      last_message_at: new Date().toISOString(),
+      last_message_content: "Sent Missed Call / Callback Request",
+      last_message_type: 'outbound'
+    }).eq("id", leadId);
     return { success: true };
   } catch (error: any) {
     console.error("Missed Call WA Error:", error);
@@ -236,6 +246,7 @@ export async function sendKYCRequestTemplate(leadId: string, customerPhone: stri
     const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, textMessage);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
+        tenant_id: lead?.tenant_id || null,
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
         message_type: 'template', content: textMessage, fonada_message_id: msgId, status: 'sent'
     });
@@ -277,6 +288,7 @@ export async function sendNotInterestedAudit(leadId: string, customerPhone: stri
     const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, textMessage);
 
     await supabase.from("chat_messages").insert({
+        tenant_id: profile?.tenant_id || null,
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
         message_type: 'template', content: textMessage, fonada_message_id: msgId, status: 'sent'
     });
@@ -312,6 +324,7 @@ export async function sendCallbackReminderTemplate(leadId: string, customerPhone
     const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, textMessage);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
+        tenant_id: lead?.tenant_id || null,
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
         message_type: 'template', content: textMessage, fonada_message_id: msgId, status: 'sent'
     });
@@ -371,6 +384,7 @@ export async function sendStatusUpdateMessage(leadId: string, customerPhone: str
     const { safePhone, msgId } = await sendTemplateViaFonadaApi(creds, customerPhone, templateName, buttonsPayload);
 
     const { error: insertError } = await supabase.from("chat_messages").insert({
+        tenant_id: tenantId || null,
         lead_id: leadId, phone_number: safePhone, direction: 'outbound',
         message_type: 'template', content: textMessage, fonada_message_id: msgId, status: 'sent'
     });
@@ -386,6 +400,170 @@ export async function sendStatusUpdateMessage(leadId: string, customerPhone: str
     return { success: true };
   } catch (error: any) {
     console.error("Application Status Update WA Error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================================================
+// 7. UPLOAD & SEND ATTACHMENT (Images, PDF, Documents)
+// ============================================================================
+export async function uploadAndSendWhatsAppFile(formData: FormData) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { data: profile } = await supabase.from('users').select('tenant_id').eq('id', user.id).single();
+    let tenantId = profile?.tenant_id;
+
+    const file = formData.get("file") as File;
+    const leadId = formData.get("leadId") as string;
+    const customerPhone = formData.get("customerPhone") as string;
+    const caption = (formData.get("caption") as string) || "";
+
+    if (!file || !leadId || !customerPhone) {
+      throw new Error("Missing required file or lead information");
+    }
+
+    // Fallback if tenantId not in profile
+    if (!tenantId) {
+      const { data: leadData } = await supabase.from('leads').select('tenant_id').eq('id', leadId).single();
+      tenantId = leadData?.tenant_id;
+    }
+    if (!tenantId) throw new Error("Tenant ID could not be identified.");
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const rawExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
+    const ext = rawExt.replace(/[^a-z0-9]/g, '');
+    const cleanBaseName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 40);
+    const storagePath = `${tenantId}/${leadId}/out_${Date.now()}_${cleanBaseName}.${ext}`;
+
+    const supabaseAdmin = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const isImage = file.type?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext);
+    const isPdf = file.type === 'application/pdf' || ext === 'pdf';
+    let mimeType = file.type;
+    if (!mimeType) {
+      if (isPdf) mimeType = 'application/pdf';
+      else if (isImage) mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+      else mimeType = 'application/octet-stream';
+    }
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('kyc_documents')
+      .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
+
+    if (uploadError) throw new Error(`Document upload failed: ${uploadError.message}`);
+
+    const { data: publicUrlData } = supabaseAdmin.storage.from('kyc_documents').getPublicUrl(storagePath);
+    const publicUrl = publicUrlData.publicUrl;
+
+    // Send link via Fonada
+    const creds = await getTenantWaCredentials(tenantId);
+    const textToSend = caption.trim() ? `${caption.trim()}\n${publicUrl}` : publicUrl;
+    const { safePhone, msgId } = await sendViaFonadaOldApi(creds, customerPhone, textToSend);
+
+    const { error: insertError } = await supabaseAdmin.from("chat_messages").insert({
+      tenant_id: tenantId,
+      lead_id: leadId,
+      phone_number: safePhone,
+      direction: 'outbound',
+      message_type: isImage ? 'image' : isPdf ? 'document' : 'document',
+      content: textToSend,
+      media_url: publicUrl,
+      media_type: mimeType,
+      file_name: file.name,
+      fonada_message_id: msgId,
+      status: 'sent'
+    });
+
+    if (insertError) console.error("chat_messages insert error:", insertError);
+
+    await supabaseAdmin.from("leads").update({
+      last_message_at: new Date().toISOString(),
+      last_message_content: caption.trim() || `📎 ${file.name}`,
+      last_message_type: 'outbound'
+    }).eq("id", leadId);
+
+    return { success: true, publicUrl, fileName: file.name };
+  } catch (error: any) {
+    console.error("Upload & Send WA File Error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================================================
+// 8. UPDATE LEAD STATUS DIRECTLY FROM CHAT HUB
+// ============================================================================
+export async function updateLeadStatusFromChat(leadId: string, newStatus: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { data: lead } = await supabase.from('leads').select('status, tenant_id').eq('id', leadId).single();
+    if (!lead) throw new Error("Lead not found");
+
+    const oldStatus = lead.status;
+    const { error: updateError } = await supabase
+      .from('leads')
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', leadId);
+
+    if (updateError) throw updateError;
+
+    // Log timeline note
+    await supabase.from('notes').insert({
+      lead_id: leadId,
+      user_id: user.id,
+      content: `Status updated from ${oldStatus} to ${newStatus} via WhatsApp Hub`,
+      note_type: 'status_change'
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Update Lead Status Error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================================================
+// 9. REASSIGN LEAD TO TELECALLER FROM CHAT HUB
+// ============================================================================
+export async function reassignLeadFromChat(leadId: string, newAssigneeId: string | null) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    let targetName = 'Unassigned';
+    if (newAssigneeId) {
+      const { data: targetUser } = await supabase.from('users').select('full_name').eq('id', newAssigneeId).maybeSingle();
+      if (targetUser?.full_name) targetName = targetUser.full_name;
+    }
+
+    const { error: updateError } = await supabase
+      .from('leads')
+      .update({ assigned_to: newAssigneeId, updated_at: new Date().toISOString() })
+      .eq('id', leadId);
+
+    if (updateError) throw updateError;
+
+    await supabase.from('notes').insert({
+      lead_id: leadId,
+      user_id: user.id,
+      content: `Lead reassigned to ${targetName} via WhatsApp Hub`,
+      note_type: 'assignment'
+    });
+
+    return { success: true, assigneeName: targetName };
+  } catch (error: any) {
+    console.error("Reassign Lead Error:", error);
     return { success: false, error: error.message };
   }
 }
