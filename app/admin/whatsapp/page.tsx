@@ -147,6 +147,8 @@ export default function AdminWhatsAppPanel() {
 
   // Audio & Notification
   const [isMuted, setIsMuted] = useState(false)
+  const isMutedRef = useRef(false)
+  const teamUsersRef = useRef<TeamUser[]>([])
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
 
   // Modals
@@ -174,6 +176,7 @@ export default function AdminWhatsAppPanel() {
     // Load Mute preference
     const savedMute = localStorage.getItem('crm_wa_sound_muted') === 'true'
     setIsMuted(savedMute)
+    isMutedRef.current = savedMute
 
     // Load Profile
     const initUser = async () => {
@@ -187,22 +190,31 @@ export default function AdminWhatsAppPanel() {
     initUser()
   }, [])
 
+  useEffect(() => {
+    isMutedRef.current = isMuted
+  }, [isMuted])
+
+  useEffect(() => {
+    teamUsersRef.current = teamUsers
+  }, [teamUsers])
+
   const toggleMute = () => {
     const next = !isMuted
     setIsMuted(next)
+    isMutedRef.current = next
     localStorage.setItem('crm_wa_sound_muted', String(next))
     toast(next ? "Notification audio muted" : "Notification audio enabled")
   }
 
   const playNotificationSound = () => {
-    if (isMuted) return
+    if (isMutedRef.current) return
     const audio = new Audio('/notification.wav')
     audio.play().catch(e => console.log("Audio play blocked:", e))
   }
 
   // --- 2. FETCH ALL LEADS & TEAM USERS (TENANT SCOPED) ---
-  const fetchLeadsAndUsers = async () => {
-    setLoadingLeads(true)
+  const fetchLeadsAndUsers = async (showLoader = false) => {
+    if (showLoader) setLoadingLeads(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       let userProfile = currentUser
@@ -221,7 +233,10 @@ export default function AdminWhatsAppPanel() {
         uQuery = uQuery.eq('tenant_id', activeTenantId)
       }
       const { data: usersData } = await uQuery
-      if (usersData) setTeamUsers(usersData as TeamUser[])
+      if (usersData) {
+        setTeamUsers(usersData as TeamUser[])
+        teamUsersRef.current = usersData as TeamUser[]
+      }
 
       // Fetch leads
       let lQuery = supabase
@@ -253,7 +268,7 @@ export default function AdminWhatsAppPanel() {
 
   // --- 3. REALTIME SUBSCRIPTIONS ---
   useEffect(() => {
-    fetchLeadsAndUsers()
+    fetchLeadsAndUsers(true)
 
     const leadChannel = supabase.channel('admin_leads_update')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads' }, (payload: any) => {
@@ -261,7 +276,7 @@ export default function AdminWhatsAppPanel() {
         setLeads(prev => {
           const exists = prev.find(l => l.id === updatedLead.id)
           if (exists) {
-            const telecaller = teamUsers.find(u => u.id === updatedLead.assigned_to)?.full_name || exists.telecaller_name
+            const telecaller = teamUsersRef.current.find(u => u.id === updatedLead.assigned_to)?.full_name || exists.telecaller_name
             const merged = { ...exists, ...updatedLead, telecaller_name: telecaller }
             return prev.map(l => l.id === updatedLead.id ? merged : l)
                        .sort((a, b) => new Date(b.last_message_at || b.created_at).getTime() - new Date(a.last_message_at || a.created_at).getTime())
@@ -312,7 +327,7 @@ export default function AdminWhatsAppPanel() {
       supabase.removeChannel(leadChannel)
       supabase.removeChannel(globalNotificationChannel) 
     }
-  }, [teamUsers, isMuted])
+  }, [])
 
   // --- 4. FILTER & TAB LOGIC ---
   const filteredLeads = useMemo(() => {
@@ -789,7 +804,7 @@ export default function AdminWhatsAppPanel() {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={fetchLeadsAndUsers}
+              onClick={() => fetchLeadsAndUsers(true)}
               className="h-7 w-7 p-0 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800"
               title="Refresh conversations"
             >
