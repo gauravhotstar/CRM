@@ -9,7 +9,15 @@ const getSupabaseAdmin = () => createServiceClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export async function submitIvrUploadRequest(data: { campaignName: string, didNumber: string, didLabel: string, phoneNumbers: string[], notes: string }) {
+export async function submitIvrUploadRequest(data: { 
+    campaignName: string, 
+    didNumber: string, 
+    didLabel: string, 
+    phoneNumbers: string[], 
+    notes: string,
+    preferredSchedule?: string,
+    velocity?: string
+}) {
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -34,7 +42,11 @@ export async function submitIvrUploadRequest(data: { campaignName: string, didNu
         }
 
         const supabaseAdmin = getSupabaseAdmin()
-        const initialNotes = formatIvrMeta(data.notes || '', null, 0)
+        const scheduleTag = data.preferredSchedule ? `[Schedule: ${data.preferredSchedule}]` : ''
+        const velocityTag = data.velocity ? `[Velocity: ${data.velocity}]` : ''
+        const combinedNotes = [scheduleTag, velocityTag, data.notes || ''].filter(Boolean).join(' ')
+        
+        const initialNotes = formatIvrMeta(combinedNotes, null, 0)
         const { error: insertError } = await supabaseAdmin.from('ivr_upload_requests').insert({
             tenant_id: profile.tenant_id,
             uploaded_by: user.id,
@@ -107,6 +119,8 @@ export async function submitIvrUploadRequest(data: { campaignName: string, didNu
                     <tr><td style="background:#f1f5f9;"><b>DID Label</b></td><td>${data.didLabel || 'N/A'}</td></tr>
                     <tr><td style="background:#f1f5f9;"><b>Total Contacts</b></td><td>${uniqueNumbers.length.toLocaleString()}</td></tr>
                     <tr><td style="background:#f1f5f9;"><b>Excel Attachments</b></td><td>${totalChunks} file(s) (5,000 numbers each, pure numbers, no headers)</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Preferred Schedule</b></td><td>${data.preferredSchedule || 'Immediate (ASAP)'}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Dialer Velocity</b></td><td>${data.velocity || 'Standard Pacing'}</td></tr>
                     <tr><td style="background:#f1f5f9;"><b>Notes</b></td><td>${data.notes || 'None'}</td></tr>
                     <tr><td style="background:#f1f5f9;"><b>Uploaded At</b></td><td>${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST</td></tr>
                 </table>
@@ -304,4 +318,51 @@ export async function getWalletHistory(tenantId: string) {
         .order('created_at', { ascending: false })
         .limit(50)
     return data || []
+}
+
+// Tenant admin: Request IVR credit top-up
+export async function requestCreditRecharge(data: { credits: number, note?: string }) {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error("Unauthorized")
+
+        const { data: profile } = await supabase.from('users').select('tenant_id, full_name, email').eq('id', user.id).single()
+        if (!profile) throw new Error("Profile not found")
+
+        const { data: org } = await supabase.from('organizations').select('name').eq('id', profile.tenant_id).single()
+        const supabaseAdmin = getSupabaseAdmin()
+
+        const { data: wallet } = await supabaseAdmin
+            .from('tenant_wallets')
+            .select('credits_balance')
+            .eq('tenant_id', profile.tenant_id)
+            .maybeSingle()
+
+        const currentBalance = wallet?.credits_balance ?? 0
+
+        const { Resend } = await import('resend')
+        const resend = new Resend(process.env.RESEND_API_KEY)
+        await resend.emails.send({
+            from: 'Hanva CRM <reports@crm.hanva.in>',
+            to: 'rajpootsingh260@gmail.com',
+            subject: `[Recharge Request] ${org?.name || profile.tenant_id} requested ${data.credits.toLocaleString()} IVR credits`,
+            html: `
+                <h2>IVR Credits Recharge Request</h2>
+                <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: sans-serif; font-size: 14px;">
+                    <tr><td style="background:#f1f5f9;"><b>Tenant</b></td><td>${org?.name || profile.tenant_id}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Requested By</b></td><td>${profile.full_name || user.email}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Current Balance</b></td><td>${currentBalance.toLocaleString()} credits</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Requested Top-Up</b></td><td><b>${data.credits.toLocaleString()} credits</b></td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Note</b></td><td>${data.note || 'None'}</td></tr>
+                    <tr><td style="background:#f1f5f9;"><b>Requested At</b></td><td>${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST</td></tr>
+                </table>
+            `
+        })
+
+        return { success: true }
+    } catch (e: any) {
+        console.error("Recharge Request Error:", e);
+        return { success: false, error: e.message }
+    }
 }
