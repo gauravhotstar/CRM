@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import { Phone, Users, CheckCircle2, TrendingUp } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 interface PerformanceChartProps {
   startDate: string
@@ -11,18 +13,27 @@ interface PerformanceChartProps {
 }
 
 export function PerformanceChart({ startDate, endDate, telecallerId }: PerformanceChartProps) {
-  const [data, setData] = useState<Array<{ date: string; leads: number; calls: number }>>([])
+  const [data, setData] = useState<Array<{ label: string; leads: number; calls: number; connected: number }>>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [activeSeries, setActiveSeries] = useState<Record<string, boolean>>({
+    calls: true,
+    connected: true,
+    leads: true,
+  })
+
   const supabase = createClient()
+  const isSingleDay = startDate === endDate
 
   useEffect(() => {
+    let isMounted = true
+
     const fetchData = async () => {
       setIsLoading(true)
       try {
-        // 🔴 1. Securely fetch the logged-in user's Tenant ID
+        // 1. Fetch the logged-in user's Tenant ID
         const { data: { user } } = await supabase.auth.getUser()
-        let tenantId = null
-        let role = null
+        let tenantId: string | null = null
+        let role: string | null = null
         
         if (user) {
           const { data: profile } = await supabase
@@ -35,90 +46,294 @@ export function PerformanceChart({ startDate, endDate, telecallerId }: Performan
           role = profile?.role
         }
 
-        // 2. Fetch data for ENTIRE range (Select ONLY timestamp to save bandwidth)
+        // 2. Fetch data for range
         let leadsQuery = supabase
           .from("leads")
           .select("created_at")
-          .gte("created_at", startDate)
+          .gte("created_at", `${startDate}T00:00:00`)
           .lte("created_at", `${endDate}T23:59:59`)
+          .limit(10000)
 
         let callsQuery = supabase
           .from("call_logs")
-          .select("created_at")
-          .gte("created_at", startDate)
+          .select("created_at, call_status, disposition, duration_seconds")
+          .gte("created_at", `${startDate}T00:00:00`)
           .lte("created_at", `${endDate}T23:59:59`)
+          .limit(10000)
 
-        // 🔴 3. APPLY STRICT TENANT ISOLATION (Defense in Depth)
+        // Strict Tenant Isolation
         if (tenantId && role !== 'super_admin') {
           leadsQuery = leadsQuery.eq('tenant_id', tenantId)
           callsQuery = callsQuery.eq('tenant_id', tenantId)
         }
 
         if (telecallerId) {
-          const ids = telecallerId.split(',')
-          leadsQuery = leadsQuery.in("assigned_to", ids)
-          callsQuery = callsQuery.in("user_id", ids)
+          const ids = telecallerId.split(',').filter(Boolean)
+          if (ids.length > 0) {
+            leadsQuery = leadsQuery.in("assigned_to", ids)
+            callsQuery = callsQuery.in("user_id", ids)
+          }
         }
 
-        // Execute queries in parallel
         const [{ data: leadsRaw }, { data: callsRaw }] = await Promise.all([leadsQuery, callsQuery])
 
-        // 4. Initialize Date Map (to ensure days with 0 data still show up on chart)
-        const dateMap = new Map<string, { leads: number; calls: number }>()
-        const start = new Date(startDate)
-        const end = new Date(endDate)
-        
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          dateMap.set(d.toISOString().split("T")[0], { leads: 0, calls: 0 })
+        if (!isMounted) return
+
+        // Helper to detect if a call was connected
+        const isConnected = (call: any) => {
+          const status = (call.call_status || "").toLowerCase()
+          const disp = (call.disposition || "").toUpperCase()
+          const dur = Number(call.duration_seconds) || 0
+          return status === "connected" || status === "answered" || status === "completed" || disp === "ANSWERED" || dur > 0
         }
 
-        // 5. Aggregate Data
-        leadsRaw?.forEach((item: any) => {
-          const dateKey = item.created_at.split("T")[0]
-          if (dateMap.has(dateKey)) dateMap.get(dateKey)!.leads += 1
-        })
+        if (isSingleDay) {
+          // --- HOURLY BREAKDOWN FOR SINGLE DAY (08:00 - 20:00) ---
+          const hourMap = new Map<number, { leads: number; calls: number; connected: number }>()
+          for (let h = 8; h <= 20; h++) {
+            hourMap.set(h, { leads: 0, calls: 0, connected: 0 })
+          }
 
-        callsRaw?.forEach((item: any) => {
-          const dateKey = item.created_at.split("T")[0]
-          if (dateMap.has(dateKey)) dateMap.get(dateKey)!.calls += 1
-        })
+          leadsRaw?.forEach((item: any) => {
+            const h = new Date(item.created_at).getHours()
+            if (hourMap.has(h)) hourMap.get(h)!.leads += 1
+          })
 
-        // 6. Format for Recharts
-        const chartData = Array.from(dateMap.entries()).map(([date, counts]) => ({
-          date: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-          ...counts,
-        }))
+          callsRaw?.forEach((item: any) => {
+            const h = new Date(item.created_at).getHours()
+            if (hourMap.has(h)) {
+              hourMap.get(h)!.calls += 1
+              if (isConnected(item)) hourMap.get(h)!.connected += 1
+            }
+          })
 
-        setData(chartData)
+          const chartData = Array.from(hourMap.entries()).map(([h, counts]) => {
+            const period = h >= 12 ? "PM" : "AM"
+            const displayHour = h % 12 === 0 ? 12 : h % 12
+            return {
+              label: `${displayHour} ${period}`,
+              ...counts,
+            }
+          })
+
+          setData(chartData)
+        } else {
+          // --- DAILY BREAKDOWN FOR MULTI-DAY ---
+          const dateMap = new Map<string, { leads: number; calls: number; connected: number }>()
+          const start = new Date(startDate)
+          const end = new Date(endDate)
+          
+          for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const y = d.getFullYear()
+            const m = String(d.getMonth() + 1).padStart(2, "0")
+            const day = String(d.getDate()).padStart(2, "0")
+            dateMap.set(`${y}-${m}-${day}`, { leads: 0, calls: 0, connected: 0 })
+          }
+
+          leadsRaw?.forEach((item: any) => {
+            const d = new Date(item.created_at)
+            const y = d.getFullYear()
+            const m = String(d.getMonth() + 1).padStart(2, "0")
+            const day = String(d.getDate()).padStart(2, "0")
+            const key = `${y}-${m}-${day}`
+            if (dateMap.has(key)) dateMap.get(key)!.leads += 1
+          })
+
+          callsRaw?.forEach((item: any) => {
+            const d = new Date(item.created_at)
+            const y = d.getFullYear()
+            const m = String(d.getMonth() + 1).padStart(2, "0")
+            const day = String(d.getDate()).padStart(2, "0")
+            const key = `${y}-${m}-${day}`
+            if (dateMap.has(key)) {
+              dateMap.get(key)!.calls += 1
+              if (isConnected(item)) dateMap.get(key)!.connected += 1
+            }
+          })
+
+          const chartData = Array.from(dateMap.entries()).map(([dateStr, counts]) => {
+            const [y, m, d] = dateStr.split("-").map(Number)
+            const dateObj = new Date(y, m - 1, d)
+            return {
+              label: dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+              ...counts,
+            }
+          })
+
+          setData(chartData)
+        }
       } catch (error) {
         console.error("Error fetching performance data:", error)
       } finally {
-        setIsLoading(false)
+        if (isMounted) setIsLoading(false)
       }
     }
 
     fetchData()
-  }, [startDate, endDate, telecallerId, supabase])
+
+    return () => {
+      isMounted = false
+    }
+  }, [startDate, endDate, telecallerId, supabase, isSingleDay])
+
+  const totals = useMemo(() => {
+    return data.reduce(
+      (acc, curr) => ({
+        calls: acc.calls + curr.calls,
+        connected: acc.connected + curr.connected,
+        leads: acc.leads + curr.leads,
+      }),
+      { calls: 0, connected: 0, leads: 0 }
+    )
+  }, [data])
+
+  const connectRate = totals.calls > 0 ? ((totals.connected / totals.calls) * 100).toFixed(1) : "0"
 
   if (isLoading) {
-    return <div className="h-64 flex items-center justify-center text-sm text-gray-500">Loading chart data...</div>
+    return (
+      <div className="h-64 flex flex-col items-center justify-center space-y-2 text-slate-400">
+        <div className="h-5 w-5 border-2 border-blue-600 border-t-transparent animate-spin rounded-full" />
+        <span className="text-xs font-medium">Loading activity trend...</span>
+      </div>
+    )
   }
 
   return (
-    <div className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} />
-          <YAxis fontSize={12} tickLine={false} axisLine={false} />
-          <Tooltip 
-            contentStyle={{ backgroundColor: "#fff", borderRadius: "8px", border: "1px solid #e5e7eb" }}
-          />
-          <Legend />
-          <Line type="monotone" dataKey="leads" stroke="#3B82F6" strokeWidth={2} dot={false} activeDot={{ r: 6 }} name="New Leads" />
-          <Line type="monotone" dataKey="calls" stroke="#10B981" strokeWidth={2} dot={false} activeDot={{ r: 6 }} name="Calls Made" />
-        </LineChart>
-      </ResponsiveContainer>
+    <div className="space-y-3">
+      {/* Mini metric summary chips */}
+      <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+        <div className="flex items-center gap-3">
+          <button 
+            type="button"
+            onClick={() => setActiveSeries(prev => ({ ...prev, calls: !prev.calls }))}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-xs font-semibold ${
+              activeSeries.calls 
+                ? "bg-blue-50 dark:bg-blue-950/40 border-blue-200 text-blue-700 dark:text-blue-300" 
+                : "opacity-40 border-slate-200 text-slate-500"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-blue-600" />
+            Calls: <span className="font-extrabold">{totals.calls.toLocaleString()}</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setActiveSeries(prev => ({ ...prev, connected: !prev.connected }))}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-xs font-semibold ${
+              activeSeries.connected 
+                ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-700 dark:text-emerald-300" 
+                : "opacity-40 border-slate-200 text-slate-500"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            Connected: <span className="font-extrabold">{totals.connected.toLocaleString()} ({connectRate}%)</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setActiveSeries(prev => ({ ...prev, leads: !prev.leads }))}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-xs font-semibold ${
+              activeSeries.leads 
+                ? "bg-purple-50 dark:bg-purple-950/40 border-purple-200 text-purple-700 dark:text-purple-300" 
+                : "opacity-40 border-slate-200 text-slate-500"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-purple-500" />
+            New Leads: <span className="font-extrabold">{totals.leads.toLocaleString()}</span>
+          </button>
+        </div>
+
+        <Badge variant="outline" className="text-[10px] text-slate-500 border-slate-200">
+          {isSingleDay ? "Hourly Activity Curve (8 AM - 8 PM)" : "Daily Volume Trend"}
+        </Badge>
+      </div>
+
+      {/* Chart Canvas */}
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorCalls" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
+              </linearGradient>
+              <linearGradient id="colorConnected" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+              </linearGradient>
+              <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.0} />
+              </linearGradient>
+            </defs>
+
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" className="dark:stroke-slate-800" />
+            <XAxis 
+              dataKey="label" 
+              fontSize={11} 
+              tickLine={false} 
+              axisLine={false} 
+              tick={{ fill: "#64748b" }}
+            />
+            <YAxis 
+              fontSize={11} 
+              tickLine={false} 
+              axisLine={false} 
+              tick={{ fill: "#64748b" }}
+              allowDecimals={false}
+            />
+            <Tooltip 
+              contentStyle={{ 
+                backgroundColor: "#ffffff", 
+                borderRadius: "12px", 
+                border: "1px solid #e2e8f0", 
+                boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
+                fontSize: "12px"
+              }}
+              formatter={(value: any, name: any) => [
+                Number(value).toLocaleString(), 
+                name === "calls" ? "Total Calls" : name === "connected" ? "Connected Calls" : "New Leads"
+              ]}
+            />
+
+            {activeSeries.calls && (
+              <Area 
+                type="monotone" 
+                dataKey="calls" 
+                stroke="#3b82f6" 
+                strokeWidth={2} 
+                fillOpacity={1} 
+                fill="url(#colorCalls)" 
+                name="calls"
+              />
+            )}
+
+            {activeSeries.connected && (
+              <Area 
+                type="monotone" 
+                dataKey="connected" 
+                stroke="#10b981" 
+                strokeWidth={2} 
+                fillOpacity={1} 
+                fill="url(#colorConnected)" 
+                name="connected"
+              />
+            )}
+
+            {activeSeries.leads && (
+              <Area 
+                type="monotone" 
+                dataKey="leads" 
+                stroke="#8b5cf6" 
+                strokeWidth={2} 
+                fillOpacity={1} 
+                fill="url(#colorLeads)" 
+                name="leads"
+              />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }
