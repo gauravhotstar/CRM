@@ -138,7 +138,7 @@ export function ExportButtons({ startDate, endDate, telecallerId, callType = "ag
           created_at,
           recording_url,
           users!call_logs_user_id_fkey(full_name),
-          leads!call_logs_lead_id_fkey(name, phone)
+          leads!call_logs_lead_id_fkey(name, phone, status)
         `)
         .gte("created_at", `${startDate}T00:00:00`)
         .lte("created_at", `${endDate}T23:59:59`)
@@ -174,6 +174,8 @@ export function ExportButtons({ startDate, endDate, telecallerId, callType = "ag
         const exportData = data.map((call: any) => {
           const status = (call.call_status || "").toLowerCase()
           const disp = (call.disposition || "").toUpperCase()
+          const notes = (call.notes || "").toLowerCase()
+          const leadSt = (call.leads?.status || "").toLowerCase()
           const dur = Number(call.duration_seconds) || 0
           
           let isConn = false
@@ -184,7 +186,10 @@ export function ExportButtons({ startDate, endDate, telecallerId, callType = "ag
             disp !== "NOANSWER" && 
             disp !== "CANCEL" && 
             disp !== "BUSY" && 
-            disp !== "CONGESTION"
+            disp !== "CONGESTION" &&
+            leadSt !== "nr" &&
+            !notes.includes("nr (") &&
+            notes !== "status updated to nr"
           ) {
             isConn = status === "connected" || status === "answered" || disp === "ANSWERED"
           }
@@ -265,7 +270,7 @@ export function ExportButtons({ startDate, endDate, telecallerId, callType = "ag
       // 3. Fetch call logs in period
       let callsQuery = supabase
         .from("call_logs")
-        .select("user_id, call_status, disposition, duration_seconds, call_type")
+        .select("user_id, call_status, disposition, duration_seconds, call_type, notes, leads:leads(status)")
         .gte("created_at", `${startDate}T00:00:00`)
         .lte("created_at", `${endDate}T23:59:59`)
         .limit(20000)
@@ -301,6 +306,8 @@ export function ExportButtons({ startDate, endDate, telecallerId, callType = "ag
       const isCallConnected = (call: any) => {
         const status = (call.call_status || "").toLowerCase()
         const disp = (call.disposition || "").toUpperCase()
+        const notes = (call.notes || "").toLowerCase()
+        const leadSt = (call.leads?.status || "").toLowerCase()
         if (
           status === "notanswered" || 
           status === "no_answer" || 
@@ -308,7 +315,10 @@ export function ExportButtons({ startDate, endDate, telecallerId, callType = "ag
           disp === "NOANSWER" || 
           disp === "CANCEL" || 
           disp === "BUSY" || 
-          disp === "CONGESTION"
+          disp === "CONGESTION" ||
+          leadSt === "nr" ||
+          notes.includes("nr (") ||
+          notes === "status updated to nr"
         ) {
           return false
         }

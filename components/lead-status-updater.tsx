@@ -333,7 +333,8 @@ export function LeadStatusUpdater({
       
       onStatusUpdate?.(activeStatus, note) 
 
-      if (isCallInitiated) await logCall(finalDuration)
+      // Always log a call for every status update
+      await logCall(activeStatus, finalDuration)
 
       // 2. WHATSAPP AUTOMATION
       if ((activeStatus === workflowTriggers.on_document_request || activeStatus === "Interested") && leadPhoneNumber) {
@@ -404,7 +405,8 @@ export function LeadStatusUpdater({
 
       await supabase.from("leads").update(updateData).eq("id", leadId)
       
-      if (isCallInitiated) await logCall(callDurationOverride ?? elapsedTime)
+      // Always log a call for every status update
+      await logCall("follow_up", callDurationOverride ?? elapsedTime)
 
       setStatus("follow_up")
       onStatusUpdate?.("follow_up", note) 
@@ -418,17 +420,27 @@ export function LeadStatusUpdater({
     } catch (error) { console.error(error); toast.error("Failed to update status.") }
   }
 
-  const logCall = async (duration: number) => {
+  const logCall = async (updatedStatus: string, duration: number) => {
     try {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
         
         let finalDuration = duration
         if (activeCall && activeCall.leadId === leadId) finalDuration = await updateCallDuration(leadId, "") || duration
+
+        const normalizedStatus = (updatedStatus || "").toLowerCase().trim()
+        const isNR = normalizedStatus === "nr"
+        const callStatus = isNR ? "no_answer" : "connected"
+        const disposition = isNR ? "NOANSWER" : "ANSWERED"
         
         const { data } = await supabase.from("call_logs").insert({
-            lead_id: leadId, user_id: user.id, call_type: "outbound", call_status: "connected",
-            duration_seconds: finalDuration, notes: remarks || "Call initiated from lead details",
+            lead_id: leadId, 
+            user_id: user.id, 
+            call_type: "outbound", 
+            call_status: callStatus,
+            disposition: disposition,
+            duration_seconds: isNR ? 0 : (finalDuration || 0), 
+            notes: remarks || (isNR ? "Status updated to NR (Customer call not received)" : `Status updated to ${updatedStatus}`),
         }).select().single()
         
         if (activeCall && activeCall.leadId === leadId) endCall(leadId)

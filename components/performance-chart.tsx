@@ -54,7 +54,7 @@ export function PerformanceChart({ startDate, endDate, telecallerId, callType = 
 
         let callsQuery = supabase
           .from("call_logs")
-          .select("created_at, call_status, disposition, duration_seconds, call_type")
+          .select("created_at, call_status, disposition, duration_seconds, call_type, notes, leads:leads(status)")
           .gte("created_at", `${startDate}T00:00:00`)
           .lte("created_at", `${endDate}T23:59:59`)
           .limit(20000)
@@ -94,6 +94,9 @@ export function PerformanceChart({ startDate, endDate, telecallerId, callType = 
         const isConnected = (call: any) => {
           const status = (call.call_status || "").toLowerCase()
           const disp = (call.disposition || "").toUpperCase()
+          const notes = (call.notes || "").toLowerCase()
+          const leadSt = (call.leads?.status || "").toLowerCase()
+
           if (
             status === "notanswered" || 
             status === "no_answer" || 
@@ -101,7 +104,10 @@ export function PerformanceChart({ startDate, endDate, telecallerId, callType = 
             disp === "NOANSWER" || 
             disp === "CANCEL" || 
             disp === "BUSY" || 
-            disp === "CONGESTION"
+            disp === "CONGESTION" ||
+            leadSt === "nr" ||
+            notes.includes("nr (") ||
+            notes === "status updated to nr"
           ) {
             return false
           }

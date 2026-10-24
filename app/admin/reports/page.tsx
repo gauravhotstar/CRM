@@ -118,7 +118,7 @@ export default async function ReportsPage({
 
     let callsQuery = supabase
       .from('call_logs')
-      .select('user_id, call_status, disposition, duration_seconds, created_at, call_type')
+      .select('user_id, call_status, disposition, duration_seconds, created_at, call_type, notes, leads:leads(status)')
       .gte('created_at', `${s}T00:00:00`)
       .lte('created_at', `${e}T23:59:59`)
       .limit(20000)
@@ -176,6 +176,9 @@ export default async function ReportsPage({
     const isConnected = (call: any) => {
       const st = (call.call_status || "").toLowerCase()
       const disp = (call.disposition || "").toUpperCase()
+      const notes = (call.notes || "").toLowerCase()
+      const leadSt = (call.leads?.status || "").toLowerCase()
+
       if (
         st === "notanswered" || 
         st === "no_answer" || 
@@ -183,7 +186,10 @@ export default async function ReportsPage({
         disp === "NOANSWER" || 
         disp === "CANCEL" || 
         disp === "BUSY" || 
-        disp === "CONGESTION"
+        disp === "CONGESTION" ||
+        leadSt === "nr" ||
+        notes.includes("nr (") ||
+        notes === "status updated to nr"
       ) {
         return false
       }
@@ -223,6 +229,8 @@ export default async function ReportsPage({
 
     const st = (c.call_status || "").toLowerCase()
     const disp = (c.disposition || "").toUpperCase()
+    const notes = (c.notes || "").toLowerCase()
+    const leadSt = (c.leads?.status || "").toLowerCase()
     if (
       st !== "notanswered" && 
       st !== "no_answer" && 
@@ -231,6 +239,9 @@ export default async function ReportsPage({
       disp !== "CANCEL" && 
       disp !== "BUSY" && 
       disp !== "CONGESTION" &&
+      leadSt !== "nr" &&
+      !notes.includes("nr (") &&
+      notes !== "status updated to nr" &&
       (st === "connected" || st === "answered" || disp === "ANSWERED")
     ) {
       winnerMap[c.user_id].connected += 1

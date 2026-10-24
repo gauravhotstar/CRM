@@ -121,7 +121,7 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId, callTy
 
         let callsQuery = supabase
           .from("call_logs")
-          .select("user_id, call_status, duration_seconds, created_at, disposition, call_type")
+          .select("user_id, call_status, duration_seconds, created_at, disposition, call_type, notes, leads:leads(status)")
           .gte("created_at", `${startDate}T00:00:00`)
           .lte("created_at", `${endDate}T23:59:59`)
           .order("created_at", { ascending: false })
@@ -176,6 +176,9 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId, callTy
         const isCallConnected = (call: any) => {
           const status = (call.call_status || "").toLowerCase()
           const disp = (call.disposition || "").toUpperCase()
+          const notes = (call.notes || "").toLowerCase()
+          const leadSt = (call.leads?.status || "").toLowerCase()
+
           if (
             status === "notanswered" || 
             status === "no_answer" || 
@@ -183,7 +186,10 @@ export function TelecallerPerformance({ startDate, endDate, telecallerId, callTy
             disp === "NOANSWER" || 
             disp === "CANCEL" || 
             disp === "BUSY" || 
-            disp === "CONGESTION"
+            disp === "CONGESTION" ||
+            leadSt === "nr" ||
+            notes.includes("nr (") ||
+            notes === "status updated to nr"
           ) {
             return false
           }
