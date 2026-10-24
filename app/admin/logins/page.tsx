@@ -36,7 +36,6 @@ import {
   isWithinInterval, subDays, startOfWeek, endOfWeek 
 } from "date-fns" 
 import { EmptyState } from "@/components/empty-state" 
-import { ModuleGuard } from "@/components/module-guard"
 import Link from "next/link"
 import { 
   createLoginAction, 
@@ -360,7 +359,6 @@ export default function AdminLoginsPage() {
     const hasActiveFilters = searchQuery !== "" || selectedBank !== "all" || statusFilter !== "all" || telecallerFilter !== "all" || dateFilter !== "this_month"
 
     return (
-        <ModuleGuard requiredModule="logins">
         <div className="p-4 md:p-8 space-y-6 bg-slate-50/60 dark:bg-slate-950/60 min-h-screen pb-20 font-sans">
             
             {/* Header Section */}
@@ -912,7 +910,6 @@ export default function AdminLoginsPage() {
             </Dialog>
 
         </div>
-        </ModuleGuard>
     )
 }
 
