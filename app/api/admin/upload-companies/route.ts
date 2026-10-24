@@ -56,9 +56,7 @@ export async function POST(request: Request) {
     const client = adminClient();
     const index = client.index('companies');
 
-    // Register 'tenant_id' as a filterable attribute in Meilisearch
-    await index.updateFilterableAttributes(['tenant_id']);
-
+    // Ingest the chunk documents directly (settings are managed centrally)
     const task = await index.addDocuments(formattedData);
 
     return NextResponse.json({ success: true, taskUid: task.taskUid });
